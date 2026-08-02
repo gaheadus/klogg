@@ -85,7 +85,6 @@ if not exist "%KLOGG_WORKSPACE%\release\msvcp140.dll" (
     for /d %%C in ("C:\Program Files (x86)\Microsoft Visual Studio\**\VC\Redist") do (
         xcopy /Y /Q "%%C\%PLATFORM_DIR%\Microsoft.VC143.CRT\msvcp140.dll" "%KLOGG_WORKSPACE%\release\" 2>nul
         xcopy /Y /Q "%%C\%PLATFORM_DIR%\Microsoft.VC143.CRT\msvcp140_1.dll" "%KLOGG_WORKSPACE%\release\" 2>nul
-        xcopy /Y /Q "%%C\%PLATFORM_DIR%\Microsoft.VC143.CRT\msvcp140_2.dll" "%KLOGG_WORKSPACE%\release\" 2>nul
         xcopy /Y /Q "%%C\%PLATFORM_DIR%\Microsoft.VC143.CRT\vcruntime140.dll" "%KLOGG_WORKSPACE%\release\" 2>nul
         xcopy /Y /Q "%%C\%PLATFORM_DIR%\Microsoft.VC143.CRT\vcruntime140_1.dll" "%KLOGG_WORKSPACE%\release\" 2>nul
     )
@@ -122,6 +121,14 @@ if exist "%QTDIR%" (
     )
 )
 
+rem If windeployqt is present, use it to deploy all required Qt DLLs and plugins into release dir
+if exist "%QTDIR%\bin\windeployqt.exe" (
+    echo "Running windeployqt to deploy Qt runtime into release dir"
+    "%QTDIR%\bin\windeployqt.exe" --no-compiler-runtime --dir "%KLOGG_WORKSPACE%\release" "%KLOGG_WORKSPACE%\%KLOGG_BUILD_ROOT%\output\klogg.exe" 2>nul
+) else (
+    echo "windeployqt not found at %QTDIR%\bin\windeployqt.exe"
+)
+
 md "%KLOGG_WORKSPACE%\release\platforms"
 if exist "%QTDIR%\plugins\platforms\qwindows.dll" (
     xcopy /Y /Q "%QTDIR%\plugins\platforms\qwindows.dll" "%KLOGG_WORKSPACE%\release\platforms\" 2>nul
@@ -149,7 +156,7 @@ echo "Making portable archive using PowerShell..."
 cd /d "%KLOGG_WORKSPACE%"
 
 REM Use PowerShell for reliable archive creation
-powershell -NoProfile -ExecutionPolicy Bypass -Command "if (Test-Path 'release') { Compress-Archive -Path 'release\*' -DestinationPath 'klogg-%KLOGG_VERSION%-%KLOGG_ARCH%-%KLOGG_QT%-portable.zip' -Force; Write-Host 'Created portable.zip' } else { Write-Host 'ERROR: release folder not found'; exit 1 }"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "if (Test-Path 'release') { Compress-Archive -Path 'release\*' -DestinationPath 'klogg-%KLOGG_VERSION%-%KLOGG_ARCH%-%KLOGG_QT%-portable.zip' -Force }"
 
 if %errorlevel% neq 0 (
     echo PowerShell portable archive creation failed
@@ -157,7 +164,7 @@ if %errorlevel% neq 0 (
 )
 
 REM Create PDB archive
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-ChildItem -Path 'release' -Filter '*.pdb' | Compress-Archive -DestinationPath 'klogg-%KLOGG_VERSION%-%KLOGG_ARCH%-%KLOGG_QT%-pdb.zip' -Force; Write-Host 'Created pdb.zip'"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-ChildItem -Path 'release' -Filter '*.pdb' | Compress-Archive -DestinationPath 'klogg-%KLOGG_VERSION%-%KLOGG_ARCH%-%KLOGG_QT%-pdb.zip' -Force"
 
 REM Verify portable.zip was created
 if not exist "klogg-%KLOGG_VERSION%-%KLOGG_ARCH%-%KLOGG_QT%-portable.zip" (
