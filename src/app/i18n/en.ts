@@ -185,13 +185,13 @@
     </message>
     <message>
         <location filename="../../ui/src/crawlerwidget.cpp" line="484"/>
-        <source> %1 matches found so far.</source>
-        <translation> %1 matches found so far.</translation>
+        <source> %1 matches so far.</source>
+        <translation> %1 matches so far.</translation>
     </message>
     <message>
         <location filename="../../ui/src/crawlerwidget.cpp" line="486"/>
-        <source> %1 match found so far.</source>
-        <translation> %1 match found so far.</translation>
+        <source> %1 match so far.</source>
+        <translation> %1 match so far.</translation>
     </message>
     <message>
         <location filename="../../ui/src/crawlerwidget.cpp" line="964"/>
@@ -265,13 +265,13 @@
     </message>
     <message>
         <location filename="../../ui/src/crawlerwidget.cpp" line="1505"/>
-        <source>%1 matches found</source>
-        <translation>%1 matches found</translation>
+        <source>%1 matches</source>
+        <translation>%1 matches</translation>
     </message>
     <message>
         <location filename="../../ui/src/crawlerwidget.cpp" line="1506"/>
-        <source>%1 match found</source>
-        <translation>%1 match found</translation>
+        <source>%1 match</source>
+        <translation>%1 match</translation>
     </message>
     <message>
         <location filename="../../ui/src/crawlerwidget.cpp" line="1510"/>

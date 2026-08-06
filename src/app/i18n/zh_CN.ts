@@ -185,13 +185,13 @@
     </message>
     <message>
         <location filename="../../ui/src/crawlerwidget.cpp" line="484"/>
-        <source> %1 matches found so far.</source>
-        <translation type="unfinished"> 已找到 %1 的匹配.</translation>
+        <source> %1 matches so far.</source>
+        <translation type="unfinished"> 已找到 %1 的匹配</translation>
     </message>
     <message>
         <location filename="../../ui/src/crawlerwidget.cpp" line="486"/>
-        <source> %1 match found so far.</source>
-        <translation type="unfinished"> 已找到 %1 的匹配.</translation>
+        <source> %1 match so far.</source>
+        <translation type="unfinished"> 已找到 %1 的匹配</translation>
     </message>
     <message>
         <location filename="../../ui/src/crawlerwidget.cpp" line="964"/>
@@ -265,13 +265,13 @@
     </message>
     <message>
         <location filename="../../ui/src/crawlerwidget.cpp" line="1505"/>
-        <source>%1 matches found</source>
-        <translation type="unfinished">找到%1个匹配</translation>
+        <source>%1 matches</source>
+        <translation type="unfinished">%1 个匹配</translation>
     </message>
     <message>
         <location filename="../../ui/src/crawlerwidget.cpp" line="1506"/>
-        <source>%1 match found</source>
-        <translation type="unfinished">找到%1个匹配</translation>
+        <source>%1 match</source>
+        <translation type="unfinished">%1 个匹配</translation>
     </message>
     <message>
         <location filename="../../ui/src/crawlerwidget.cpp" line="1510"/>

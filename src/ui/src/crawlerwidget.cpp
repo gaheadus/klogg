@@ -409,8 +409,12 @@ void CrawlerWidget::startNewSearch()
         applyConfiguration();
     }
 
-    tabbedFilteredView_->setTabText( tabbedFilteredView_->currentIndex(),
-                                     QString::number( nextTabNumber_ - 1 ) );
+    // Update tab title with search string (first 10 chars) or number as fallback
+    {
+        const QString tabTitle
+            = ( !searchText.isEmpty() ) ? searchText.left( 10 ) : QString::number( nextTabNumber_ - 1 );
+        tabbedFilteredView_->setTabText( tabbedFilteredView_->currentIndex(), tabTitle );
+    }
 
     // Record the search line in the recent list
     // (reload the list first in case another glogg changed it)
@@ -517,9 +521,9 @@ void CrawlerWidget::updateFilteredView( LinesCount nbMatches, int progress,
 
             searchInfoLine_->setText(
                 tr( "Search in progress (%1 %)..." ).arg( QString::number( progress ) )
-                + ( nbMatches.get() > 1 ? tr( " %1 matches found so far." )
+                + ( nbMatches.get() > 1 ? tr( " %1 matches so far." )
                                               .arg( QString::number( nbMatches.get() ) )
-                                        : tr( " %1 match found so far." )
+                                        : tr( " %1 match so far." )
                                               .arg( QString::number( nbMatches.get() ) ) ) );
 
             searchInfoLine_->displayGauge( progress );
@@ -1162,13 +1166,19 @@ void CrawlerWidget::setup()
     tabbedFilteredView_->setDocumentMode( true );
     tabbedFilteredView_->setTabBarAutoHide( true );
 
-    // Set fixed tab width so all tabs have equal size regardless of text content
+    // Set tab width with dynamic sizing based on content
+    // - min-width: 100px (ensures readability for short search terms)
+    // - max-width: 150px (allows ~10-12 ASCII chars, then truncates with ellipsis)
     auto* tabBar = tabbedFilteredView_->tabBar();
-    constexpr int fixedTabWidth = 40;
-    tabBar->setFixedHeight( 25 );
+    tabBar->setFixedHeight( 28 );
     tabBar->setStyleSheet(
-        QString( "QTabBar::tab { min-width: %1px; max-width: %1px; width: %1px; }" )
-            .arg( fixedTabWidth ) );
+        QString( "QTabBar::tab { min-width: 100px; max-width: 150px; width: 100px; "
+                 "padding: 2px 6px; text-overflow: ellipsis; } "
+                 "QTabBar { qproperty-drawBase: 0; } "
+                 "QTabBar::scroller { width: 24px; } "
+                 "QTabBar QToolButton { width: 24px; height: 24px; }" ) );
+    // Ensure scroll buttons are visible when needed
+    tabBar->setUsesScrollButtons( true );
 
     auto* bottomMainLayout = new QVBoxLayout;
     bottomMainLayout->addLayout( searchLineLayout );
@@ -1772,8 +1782,8 @@ void CrawlerWidget::printSearchInfoMessage( LinesCount nbMatches )
     case SearchState::Static:
     case SearchState::Autorefreshing:
         // Some languages translate the plural the same as the singular, so use the full string
-        text = nbMatches.get() > 1 ? tr( "%1 matches found" ).arg( nbMatches.get() )
-                                   : tr( "%1 match found" ).arg( nbMatches.get() );
+        text = nbMatches.get() > 1 ? tr( "%1 matches" ).arg( nbMatches.get() )
+                                   : tr( "%1 match" ).arg( nbMatches.get() );
         break;
     case SearchState::FileTruncated:
     case SearchState::TruncatedAutorefreshing:

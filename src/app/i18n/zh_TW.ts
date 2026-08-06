@@ -185,12 +185,12 @@
     </message>
     <message>
         <location filename="../../ui/src/crawlerwidget.cpp" line="484"/>
-        <source> %1 matches found so far.</source>
+        <source> %1 matches so far.</source>
         <translation> 到目前為止已找到 %1 個符合項目</translation>
     </message>
     <message>
         <location filename="../../ui/src/crawlerwidget.cpp" line="486"/>
-        <source> %1 match found so far.</source>
+        <source> %1 match so far.</source>
         <translation> 到目前為止已找到 %1 個符合項目</translation>
     </message>
     <message>
@@ -265,13 +265,13 @@
     </message>
     <message>
         <location filename="../../ui/src/crawlerwidget.cpp" line="1505"/>
-        <source>%1 matches found</source>
-        <translation>找到 %1 個符合項目</translation>
+        <source>%1 matches</source>
+        <translation> %1 個符合項目</translation>
     </message>
     <message>
         <location filename="../../ui/src/crawlerwidget.cpp" line="1506"/>
-        <source>%1 match found</source>
-        <translation>找到 %1 個符合項目</translation>
+        <source>%1 match</source>
+        <translation> %1 個符合項目</translation>
     </message>
     <message>
         <location filename="../../ui/src/crawlerwidget.cpp" line="1510"/>
