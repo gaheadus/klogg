@@ -401,6 +401,9 @@ void CrawlerWidget::startNewSearch()
 
         connect( logFilteredData_.get(), &LogFilteredData::searchProgressed, this,
                  &CrawlerWidget::updateFilteredView, Qt::QueuedConnection );
+        connect( logFilteredData_.get(), &LogFilteredData::searchStopped, this,
+                 [ this, data = logFilteredData_.get() ] { continuePendingSearch( data ); },
+                 Qt::QueuedConnection );
 
         Q_EMIT filteredViewChanged();
         logMainView_->useNewFiltering( logFilteredData_.get() );
@@ -568,6 +571,9 @@ void CrawlerWidget::jumpToMatchingLine( LineNumber filteredLineNb, LinesCount nL
     const auto mainViewLine = logFilteredData_->getMatchingLineNumber( filteredLineNb );
     logMainView_->selectPortionAndDisplayLine( mainViewLine, nLines, startCol,
                                                nSymbols ); // FIXME: should be done with a signal.
+
+    // Do not change focus here. The filtered view must remain active after a
+    // result is clicked; this method only synchronizes the main view selection.
 }
 
 void CrawlerWidget::updateLineNumberHandler( LineNumber line, LinesCount nLines,
@@ -1284,6 +1290,9 @@ void CrawlerWidget::setup()
 
     connect( logFilteredData_.get(), &LogFilteredData::searchProgressed, this,
              &CrawlerWidget::updateFilteredView, Qt::QueuedConnection );
+    connect( logFilteredData_.get(), &LogFilteredData::searchStopped, this,
+             [ this, data = logFilteredData_.get() ] { continuePendingSearch( data ); },
+             Qt::QueuedConnection );
 
     // Sent load file update to MainWindow (for status update)
     connect( logData_.get(), &LogData::loadingProgressed, this, &CrawlerWidget::loadingProgressed );
@@ -1368,7 +1377,11 @@ void CrawlerWidget::closeFilteredView( int tabIndex )
 void CrawlerWidget::filteredViewDestroyed( QObject* view )
 {
     auto* filteredView = qobject_cast<FilteredView*>( view );
-    filteredViewsData_.erase( filteredView );
+    const auto dataIt = filteredViewsData_.find( filteredView );
+    if ( dataIt != filteredViewsData_.end() ) {
+        pendingSearches_.erase( dataIt->second.get() );
+        filteredViewsData_.erase( dataIt );
+    }
     filteredViewsSearchContext_.erase( filteredView );
 }
 
@@ -1669,89 +1682,94 @@ void CrawlerWidget::restoreFilteredViewSearchContext( FilteredView* view )
 void CrawlerWidget::replaceCurrentSearch( const QString& searchText )
 {
     LOG_INFO << "replacing current search with " << searchText;
-    // Interrupt the search if it's ongoing
-    logFilteredData_->interruptSearch();
 
-    // We have to wait for the last search update (100%)
-    // before clearing/restarting to avoid having remaining results.
+    auto& pending = pendingSearches_[ logFilteredData_.get() ];
+    pending.searchText = searchText;
+    pending.matchCase = matchCaseButton_->isChecked();
+    pending.useRegexp = useRegexpButton_->isChecked();
+    pending.inverse = inverseButton_->isChecked();
+    pending.booleanCombination = booleanButton_->isChecked();
+    pending.searchStartLine = searchStartLine_;
+    pending.searchEndLine = searchEndLine_;
+    pending.isPending = true;
 
-    // FIXME: this is a bit of a hack, we call processEvents
-    // for Qt to empty its event queue, including (hopefully)
-    // the search update event sent by logFilteredData_. It saves
-    // us the overhead of having proper sync.
-    QApplication::processEvents( QEventLoop::ExcludeUserInputEvents );
+    auto* const targetData = logFilteredData_.get();
+    targetData->interruptSearch();
+    if ( !targetData->isSearchRunning() ) {
+        continuePendingSearch( targetData );
+    }
+}
+
+void CrawlerWidget::continuePendingSearch( LogFilteredData* targetData )
+{
+    const auto pendingIt = pendingSearches_.find( targetData );
+    if ( pendingIt == pendingSearches_.end() || !pendingIt->second.isPending ) {
+        return;
+    }
+
+    const auto request = pendingIt->second;
+    pendingSearches_.erase( pendingIt );
+
+    auto viewIt = std::find_if( filteredViewsData_.begin(), filteredViewsData_.end(),
+                                [ targetData ]( const auto& entry ) {
+                                    return entry.second.get() == targetData;
+                                } );
+    if ( viewIt == filteredViewsData_.end() ) {
+        return;
+    }
+
+    auto* const targetView = viewIt->first;
+    const bool isCurrentView = targetData == logFilteredData_.get();
+    const auto regexpPattern = request.toPattern();
+    RegularExpression hsExpression{ regexpPattern };
+    const auto isValidExpression = request.searchText.isEmpty() || hsExpression.isValid();
+
+    targetData->clearSearch();
+    targetView->updateData();
+
+    if ( isValidExpression && !request.searchText.isEmpty() ) {
+        targetData->runSearch( regexpPattern, request.searchStartLine, request.searchEndLine );
+        targetView->setSearchPattern( regexpPattern );
+    }
+    else {
+        targetView->setSearchPattern( {} );
+    }
+
+    filteredViewsSearchContext_[ targetView ] = request;
+
+    // Only the active tab owns shared controls and the main overview.
+    if ( !isCurrentView ) {
+        return;
+    }
 
     nbMatches_ = 0_lcount;
-
-    // Switch to "Marks and matches" view when in "Marks" view
     using VisibilityFlags = LogFilteredData::VisibilityFlags;
-    if ( !filteredView_->visibility().testFlag( VisibilityFlags::Matches ) ) {
+    if ( !targetView->visibility().testFlag( VisibilityFlags::Matches ) ) {
         visibilityBox_->setCurrentIndex( 0 );
     }
 
-    // Clear and recompute the content of the filtered window.
-    logFilteredData_->clearSearch();
-    filteredView_->updateData();
-
-    // Update the match overview
     overview_.updateData( logData_->getNbLine() );
-
-    if ( !searchText.isEmpty() ) {
-
-        // Constructs the regexp
-        auto regexpPattern = RegularExpressionPattern(
-            searchText, matchCaseButton_->isChecked(), inverseButton_->isChecked(),
-            booleanButton_->isChecked(), !useRegexpButton_->isChecked() );
-
-        RegularExpression hsExpression{ regexpPattern };
-        auto isValidExpression = hsExpression.isValid();
-
-        if ( isValidExpression ) {
-            // Activate the stop button
-            stopButton_->setEnabled( true );
-            stopButton_->show();
-            clearButton_->hide();
-            searchButton_->hide();
-            // Start a new asynchronous search
-            logFilteredData_->runSearch( regexpPattern, searchStartLine_, searchEndLine_ );
-            // Accept auto-refresh of the search
-            searchState_.startSearch();
-            searchInfoLine_->hide();
-            logMainView_->setSearchPattern( regexpPattern );
-            filteredView_->setSearchPattern( regexpPattern );
-        }
-        else {
-            // The regexp is wrong
-            logFilteredData_->clearSearch();
-            filteredView_->updateData();
-            searchState_.resetState();
-
-            // Inform the user
-            QString errorString = hsExpression.errorString();
-            QString errorMessage = tr( "Error in expression" );
-            // const int offset = regexp.patternErrorOffset();
-            // if ( offset != -1 ) {
-            //     errorMessage += " at position ";
-            //     errorMessage += QString::number( offset );
-            // }
-            errorMessage += ": ";
-            errorMessage += errorString;
-            searchInfoLine_->setPalette( ErrorPalette );
-            searchInfoLine_->setText( errorMessage );
-            searchInfoLine_->show();
-
-            logMainView_->setSearchPattern( {} );
-            filteredView_->setSearchPattern( {} );
-        }
+    if ( isValidExpression && !request.searchText.isEmpty() ) {
+        stopButton_->setEnabled( true );
+        stopButton_->show();
+        clearButton_->hide();
+        searchButton_->hide();
+        searchState_.startSearch();
+        searchInfoLine_->hide();
+        logMainView_->setSearchPattern( regexpPattern );
+    }
+    else if ( !isValidExpression ) {
+        searchState_.resetState();
+        const auto errorMessage = tr( "Error in expression" ) + ": " + hsExpression.errorString();
+        searchInfoLine_->setPalette( ErrorPalette );
+        searchInfoLine_->setText( errorMessage );
+        searchInfoLine_->show();
+        logMainView_->setSearchPattern( {} );
     }
     else {
         searchState_.resetState();
         printSearchInfoMessage();
     }
-
-    // Bind this tab to the pattern that was actually searched, not whatever
-    // the shared search box may contain later.
-    saveFilteredViewSearchContext( filteredView_, searchText );
 }
 
 // Updates the content of the drop down list for the saved searches,

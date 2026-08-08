@@ -87,6 +87,10 @@ class LogFilteredData : public AbstractLogData {
     // Interrupt the running search if one is in progress.
     // Nothing is done if no search is in progress.
     void interruptSearch();
+
+    // Check if a search is currently running
+    bool isSearchRunning() const;
+
     // Clear the search and the list of results.
     void clearSearch( bool dropCache = false );
 
@@ -141,6 +145,8 @@ class LogFilteredData : public AbstractLogData {
     // Sent when the search has progressed, give the number of matches (so far)
     // and the percentage of completion
     void searchProgressed( LinesCount nbMatches, int progress, LineNumber initialLine );
+    void searchStarted();
+    void searchStopped();
     void searchProgressedThrottled();
 
   private Q_SLOTS:

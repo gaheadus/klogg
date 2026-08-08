@@ -339,10 +339,15 @@ class CrawlerWidget : public QSplitter,
         }
     };
 
+    struct PendingSearchRequest : FilteredViewSearchContext {
+        bool isPending = false;
+    };
+
     // Private functions
     void setup();
     void setShortcuts();
     void replaceCurrentSearch( const QString& searchText );
+    void continuePendingSearch( LogFilteredData* targetData );
     void updateSearchCombo();
     AbstractLogView* activeView() const;
     void printSearchInfoMessage( LinesCount nbMatches = 0_lcount );
@@ -436,6 +441,9 @@ class CrawlerWidget : public QSplitter,
 
     // Current number of matches
     LinesCount nbMatches_;
+
+    // Requests are owned by their LogFilteredData so another tab cannot consume them.
+    std::unordered_map<LogFilteredData*, PendingSearchRequest> pendingSearches_;
 
     LineNumber searchStartLine_;
     LineNumber searchEndLine_;

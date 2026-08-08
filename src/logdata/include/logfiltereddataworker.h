@@ -206,6 +206,9 @@ public:
     // Interrupts the search if one is in progress
     void interrupt();
 
+    // Used only to start a request immediately when no search is active.
+    bool isSearchRunning() const;
+
     // get the current indexing data
     SearchResults getSearchResults() const;
 
@@ -216,6 +219,10 @@ Q_SIGNALS:
     // Sent when indexing is finished, signals the client
     // to copy the new data back.
     void searchFinished();
+    // Sent when search starts running
+    void searchStarted();
+    // Sent when search stops running (finished, interrupted, or cancelled)
+    void searchStopped();
 
 private:
     void connectSignalsAndRun( SearchOperation* operationRequested );

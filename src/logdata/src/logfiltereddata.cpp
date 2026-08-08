@@ -79,6 +79,10 @@ LogFilteredData::LogFilteredData( const LogData* logData )
     // Forward the update signal
     connect( &workerThread_, &LogFilteredDataWorker::searchProgressed, this,
              &LogFilteredData::handleSearchProgressed );
+    connect( &workerThread_, &LogFilteredDataWorker::searchStarted, this,
+             &LogFilteredData::searchStarted );
+    connect( &workerThread_, &LogFilteredDataWorker::searchStopped, this,
+             &LogFilteredData::searchStopped );
 
     searchProgressThrottler_.setTimeout( 100 );
     connect( this, &LogFilteredData::searchProgressedThrottled, &searchProgressThrottler_,
@@ -144,6 +148,11 @@ void LogFilteredData::interruptSearch()
     LOG_DEBUG << "Entering interruptSearch";
 
     workerThread_.interrupt();
+}
+
+bool LogFilteredData::isSearchRunning() const
+{
+    return workerThread_.isSearchRunning();
 }
 
 void LogFilteredData::clearSearch( bool dropCache )

@@ -61,6 +61,7 @@
 #include "synchronization.h"
 
 namespace {
+
 struct PartialSearchResults {
     PartialSearchResults() = default;
 
@@ -196,8 +197,13 @@ void LogFilteredDataWorker::connectSignalsAndRun( SearchOperation* operationRequ
     connect( operationRequested, &SearchOperation::searchFinished, this,
              &LogFilteredDataWorker::searchFinished, Qt::QueuedConnection );
 
+    Q_EMIT searchStarted();
     operationRequested->run( searchData_ );
     operationRequested->disconnect( this );
+
+    // Queue the notification after this QRunnable returns, so clients can
+    // immediately start the replacement search without polling the pool.
+    dispatchToObject( [ this ] { Q_EMIT searchStopped(); }, this );
 }
 
 void LogFilteredDataWorker::search( const RegularExpressionPattern& regExp, LineNumber startLine,
@@ -246,6 +252,11 @@ void LogFilteredDataWorker::interrupt()
 {
     LOG_INFO << "Search interruption requested";
     interruptRequested_.set();
+}
+
+bool LogFilteredDataWorker::isSearchRunning() const
+{
+    return operationsPool_.activeThreadCount() > 0;
 }
 
 // This will do an atomic copy of the object
@@ -326,7 +337,6 @@ void SearchOperation::doSearch( SearchData& searchData, LineNumber initialLine )
                 searchGraph, 1, [ &regexMatchers, index, this ]( const BlockDataType& blockData ) {
                     if ( interruptRequested_ ) {
                         LOG_INFO << "Matcher " << index << " interrupted";
-                        auto results = std::make_shared<PartialSearchResults>();
                         blockData->searchResults.chunkStart = blockData->chunkStart;
                         blockData->searchResults.processedLines
                             = LinesCount{ blockData->lines.endOfLines.size() };
@@ -367,6 +377,7 @@ void SearchOperation::doSearch( SearchData& searchData, LineNumber initialLine )
             searchGraph, 1, [ & ]( const BlockDataType& blockData ) {
                 if ( interruptRequested_ ) {
                     LOG_INFO << "Match processor interrupted";
+                    delete blockData;
                     return tbb::flow::continue_msg{};
                 }
 
@@ -451,13 +462,21 @@ void SearchOperation::doSearch( SearchData& searchData, LineNumber initialLine )
         chunkStart = chunkStart + nbLinesInChunk;
         fileReadingDuration += chunkReadTime;
 
-        while ( !blockPrefetcher.try_put( blockData ) && !interruptRequested_ ) {
-            std::this_thread::sleep_for( std::chrono::milliseconds( 1 ) );
+        bool submitted = false;
+        while ( !submitted && !interruptRequested_ ) {
+            submitted = blockPrefetcher.try_put( blockData );
+            if ( !submitted ) {
+                std::this_thread::sleep_for( std::chrono::milliseconds( 1 ) );
+            }
+        }
+        if ( !submitted ) {
+            delete blockData;
         }
     }
 
     searchGraph.wait_for_all();
 
+    // Pool will be automatically reset when it goes out of scope
     high_resolution_clock::time_point t2 = high_resolution_clock::now();
     const auto durationUs = duration_cast<microseconds>( t2 - t1 );
     const auto durationMs = duration_cast<milliseconds>( t2 - t1 );

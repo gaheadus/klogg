@@ -469,6 +469,11 @@ void AbstractLogView::changeEvent( QEvent* changeEvent )
 
 void AbstractLogView::mousePressEvent( QMouseEvent* mouseEvent )
 {
+    // QAbstractScrollArea may leave focus on a previously active view when
+    // the viewport is clicked, especially on empty space. Make the clicked
+    // log view the active view before updating its selection.
+    setFocus( Qt::MouseFocusReason );
+
     auto line = convertCoordToLine( mouseEvent->pos().y() );
 
     if ( mouseEvent->button() == Qt::LeftButton ) {

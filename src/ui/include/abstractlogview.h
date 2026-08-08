@@ -130,6 +130,7 @@ class AbstractLogView : public QAbstractScrollArea, public SearchableWidgetInter
     // Instructs the widget to update it's content geometry,
     // used when the font is changed.
     void updateDisplaySize();
+
     // Return the line number of the top line of the view
     LineNumber getTopLine() const;
     // Return the text of the current selection.

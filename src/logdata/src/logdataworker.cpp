@@ -36,6 +36,7 @@
  * along with klogg.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <array>
 #include <chrono>
 #include <exception>
 #include <functional>
@@ -532,6 +533,7 @@ std::chrono::microseconds IndexOperation::readFileInBlocks( QFile& file,
 
         if ( readBytes < 0 ) {
             LOG_ERROR << "Reading past the end of file";
+            delete blockData.second;
             break;
         }
 
@@ -547,15 +549,29 @@ std::chrono::microseconds IndexOperation::readFileInBlocks( QFile& file,
             LOG_INFO << "Sending block " << blockData.first << " size " << blockData.second->size();
         }
 
-        while ( !blockPrefetcher.try_put( std::move( blockData ) ) && !interruptRequest_ ) {
-            std::this_thread::sleep_for( std::chrono::milliseconds( 1 ) );
+        bool submitted = false;
+        while ( !submitted && !interruptRequest_ ) {
+            submitted = blockPrefetcher.try_put( blockData );
+            if ( !submitted ) {
+                std::this_thread::sleep_for( std::chrono::milliseconds( 1 ) );
+            }
+        }
+        if ( !submitted ) {
+            delete blockData.second;
         }
         sentBlocksCount++;
     }
 
     auto lastBlock = std::make_pair( -1, new klogg::vector<char>{} );
-    while ( !blockPrefetcher.try_put( lastBlock ) && !interruptRequest_ ) {
-        std::this_thread::sleep_for( std::chrono::milliseconds( 1 ) );
+    bool submittedLastBlock = false;
+    while ( !submittedLastBlock && !interruptRequest_ ) {
+        submittedLastBlock = blockPrefetcher.try_put( lastBlock );
+        if ( !submittedLastBlock ) {
+            std::this_thread::sleep_for( std::chrono::milliseconds( 1 ) );
+        }
+    }
+    if ( !submittedLastBlock ) {
+        delete lastBlock.second;
     }
 
     LOG_INFO << "IO thread done";
@@ -662,7 +678,7 @@ void IndexOperation::doIndex( OffsetInFile initialPosition )
     auto blockQueue = tbb::flow::queue_node<BlockData>( indexingGraph );
 
     auto blockParser = tbb::flow::function_node<BlockData, tbb::flow::continue_msg>(
-        indexingGraph, tbb::flow::serial, [ this, &state ]( const BlockData& blockData ) {
+        indexingGraph,         tbb::flow::serial, [ this, &state ]( const BlockData& blockData ) {
             indexNextBlock( state, blockData );
             delete blockData.second;
             return tbb::flow::continue_msg{};
