@@ -568,6 +568,9 @@ void CrawlerWidget::jumpToMatchingLine( LineNumber filteredLineNb, LinesCount nL
     const auto mainViewLine = logFilteredData_->getMatchingLineNumber( filteredLineNb );
     logMainView_->selectPortionAndDisplayLine( mainViewLine, nLines, startCol,
                                                nSymbols ); // FIXME: should be done with a signal.
+
+    // Give focus back to LogMainView after jumping, so it doesn't appear dimmed
+    logMainView_->setFocus();
 }
 
 void CrawlerWidget::updateLineNumberHandler( LineNumber line, LinesCount nLines,
@@ -1597,6 +1600,12 @@ void CrawlerWidget::loadIcons()
     keepSearchResultsButton_->setIcon( iconLoader_.load( "icons8-lock" ) );
     matchCaseButton_->setIcon( iconLoader_.load( "icons8-font-size" ) );
     stopButton_->setIcon( iconLoader_.load( "icons8-close-window" ) );
+}
+
+void CrawlerWidget::updateInactiveViewDimming()
+{
+    logMainView_->setDimmed( filteredView_->hasFocus() );
+    filteredView_->setDimmed( logMainView_->hasFocus() );
 }
 
 // Create a new search using the text passed, replace the currently

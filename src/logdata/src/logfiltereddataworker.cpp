@@ -248,6 +248,11 @@ void LogFilteredDataWorker::interrupt()
     interruptRequested_.set();
 }
 
+bool LogFilteredDataWorker::isSearchRunning() const
+{
+    return operationsPool_.activeThreadCount() > 0;
+}
+
 // This will do an atomic copy of the object
 SearchResults LogFilteredDataWorker::getSearchResults() const
 {
