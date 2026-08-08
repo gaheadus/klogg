@@ -22,7 +22,7 @@
  *
  * This file is part of klogg.
  *
- * klogg is free software: you can redistribute it and/or modify
+ * klogg is free software: you can redistribute it and/or modify    
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
@@ -43,7 +43,7 @@
 
 #include "abstractlogview.h"
 #include "active_screen.h"
-#include "linetypes.h"
+#include "linetypes.h" 
 #include "log.h"
 
 #include <algorithm>
@@ -62,6 +62,7 @@
 #include <QSignalBlocker>
 #include <QStandardItemModel>
 #include <QStringListModel>
+#include <QThread>
 #include <qglobal.h>
 #include <qobject.h>
 #include <string>
@@ -119,7 +120,7 @@ public:
     }
     bool autoRefresh() const
     {
-        return autoRefresh_;
+        return autoRefresh_; 
     }
     bool followFile() const
     {
@@ -1669,17 +1670,18 @@ void CrawlerWidget::restoreFilteredViewSearchContext( FilteredView* view )
 void CrawlerWidget::replaceCurrentSearch( const QString& searchText )
 {
     LOG_INFO << "replacing current search with " << searchText;
+
     // Interrupt the search if it's ongoing
     logFilteredData_->interruptSearch();
 
-    // We have to wait for the last search update (100%)
+    // Wait for the search to actually stop before proceeding.
+    // This ensures the search update event (100%) has been processed
     // before clearing/restarting to avoid having remaining results.
-
-    // FIXME: this is a bit of a hack, we call processEvents
-    // for Qt to empty its event queue, including (hopefully)
-    // the search update event sent by logFilteredData_. It saves
-    // us the overhead of having proper sync.
-    QApplication::processEvents( QEventLoop::ExcludeUserInputEvents );
+    constexpr int MaxWaitIterations = 100;
+    constexpr int WaitIntervalMs = 10;
+    for ( int i = 0; i < MaxWaitIterations && logFilteredData_->isSearchRunning(); ++i ) {
+        QThread::msleep( WaitIntervalMs );
+    }
 
     nbMatches_ = 0_lcount;
 
