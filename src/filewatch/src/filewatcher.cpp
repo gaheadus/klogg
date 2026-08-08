@@ -286,8 +286,8 @@ class EfswFileWatcher final : public efsw::FileWatchListener {
             const auto isFileWatched
                 = std::any_of( watchedDirectory->files.begin(), watchedDirectory->files.end(),
                                [ &filename, &oldFilename, &changedFilename ]( const auto& f ) {
-                                   if ( f.name == filename || f.name == oldFilename ) {
-                                       changedFilename = f.name;
+                                   if ( f.first == filename || f.first == oldFilename ) {
+                                       changedFilename = f.first;
                                        return true;
                                    }
 

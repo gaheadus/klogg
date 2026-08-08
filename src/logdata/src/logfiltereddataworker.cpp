@@ -254,7 +254,7 @@ void LogFilteredDataWorker::interrupt()
 
 bool LogFilteredDataWorker::isSearchRunning() const
 {
-    return searchInProgress_;
+    return searchInProgress_.test();
 }
 
 // This will do an atomic copy of the object
