@@ -40,8 +40,12 @@
 #define FILEWATCHER_H
 
 #include <QObject>
+#include <QString>
+#include <QTimer>
 
 #include <memory>
+#include <unordered_set>
+#include <vector>
 
 class EfswFileWatcher;
 class QTimer;
@@ -95,7 +99,7 @@ class FileWatcher : public QObject {
 
     QTimer* checkTimer_;
     KDToolBox::KDGenericSignalThrottler* throttler_;
-    std::vector<QString> changes_;
+    std::unordered_set<QString> changes_;
 
     std::unique_ptr<EfswFileWatcher, EfswFileWatcherDeleter> efswWatcher_;
 };
