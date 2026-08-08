@@ -64,11 +64,6 @@ class AtomicFlag {
         return flag_.loadAcquire() != 0;
     }
 
-    inline bool test() const
-    {
-        return flag_.loadAcquire() != 0;
-    }
-
     inline bool operator!() const
     {
         return !flag_.loadAcquire();
