@@ -22,7 +22,7 @@
  *
  * This file is part of klogg.
  *
- * klogg is free software: you can redistribute it and/or modify    
+ * klogg is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
@@ -43,7 +43,7 @@
 
 #include "abstractlogview.h"
 #include "active_screen.h"
-#include "linetypes.h" 
+#include "linetypes.h"
 #include "log.h"
 
 #include <algorithm>
@@ -62,7 +62,6 @@
 #include <QSignalBlocker>
 #include <QStandardItemModel>
 #include <QStringListModel>
-#include <QThread>
 #include <qglobal.h>
 #include <qobject.h>
 #include <string>
@@ -80,30 +79,6 @@
 #include "shortcuts.h"
 
 static constexpr char AnsiColorSequenceRegex[] = "\\x1B\\[([0-9]{1,4}((;|:)[0-9]{1,3})*)?[mK]";
-
-static constexpr char SearchOptionButtonStyle[] = R"(
-QToolButton {
- border: 1px solid transparent;
- border-radius: 3px;
- padding: 2px;
- margin: 1px;
- background: transparent;
-}
-QToolButton:hover {
- background: rgba(128, 128, 128, 0.25);
-}
-QToolButton:checked {
- border: 1px solid #007ACC;
- background: rgba(0, 122, 204, 0.35);
-}
-QToolButton:checked:hover {
- border: 1px solid #007ACC;
- background: rgba(0, 122, 204, 0.45);
-}
-QToolButton:pressed {
- background: rgba(0, 122, 204, 0.55);
-}
-)";
 
 // Palette for error signaling (yellow background)
 const QPalette CrawlerWidget::ErrorPalette( Qt::darkYellow );
@@ -144,7 +119,7 @@ public:
     }
     bool autoRefresh() const
     {
-        return autoRefresh_; 
+        return autoRefresh_;
     }
     bool followFile() const
     {
@@ -492,7 +467,11 @@ void CrawlerWidget::editSearchHistory()
 
     if ( ok ) {
         savedSearches_->clear();
+#if QT_VERSION >= QT_VERSION_CHECK( 5, 15, 0 )
         auto items = newHistory.split( QChar::LineFeed, Qt::SkipEmptyParts );
+#else
+        auto items = newHistory.split( QChar::LineFeed, QString::SkipEmptyParts );
+#endif
         std::for_each( items.rbegin(), items.rend(), [ this ]( const auto& item ) {
             savedSearches_->addRecent( item );
             LOG_INFO << item;
@@ -817,15 +796,6 @@ AbstractLogView* CrawlerWidget::activeView() const
     }
 }
 
-void CrawlerWidget::updateInactiveViewDimming()
-{
-    const bool filteredFocused = filteredView_->hasFocus();
-    logMainView_->setDimmed( filteredFocused );
-
-    const bool mainFocused = logMainView_->hasFocus();
-    filteredView_->setDimmed( mainFocused );
-}
-
 void CrawlerWidget::searchForward()
 {
     LOG_DEBUG << "CrawlerWidget::searchForward";
@@ -1125,18 +1095,6 @@ void CrawlerWidget::setup()
     searchRefreshButton_->setFocusPolicy( Qt::NoFocus );
     searchRefreshButton_->setContentsMargins( 2, 2, 2, 2 );
 
-    // Apply unified style to search option buttons
-    const std::array filterOptButtons{
-        matchCaseButton_,      //
-        useRegexpButton_,      //
-        inverseButton_,        //
-        booleanButton_,        //
-        searchRefreshButton_,  //
-    };
-    for ( QToolButton* optionButton : filterOptButtons ) {
-        optionButton->setStyleSheet( SearchOptionButtonStyle );
-    }
-
     // Construct the Search line
     searchLineCompleter_ = new QCompleter( savedSearches_->recentSearches(), this );
     searchLineEdit_ = new QComboBox;
@@ -1309,10 +1267,6 @@ void CrawlerWidget::setup()
 
     // Detect activity in the views
     connect( logMainView_, &LogMainView::activity, this, &CrawlerWidget::activityDetected );
-
-    // Keep the inactive view dimmed as focus moves between the views.
-    connect( logMainView_, &LogMainView::focusChanged, this,
-             &CrawlerWidget::updateInactiveViewDimming );
 
     connect( logMainView_, &LogMainView::changeSearchLimits, this,
              &CrawlerWidget::setSearchLimits );
@@ -1510,9 +1464,6 @@ void CrawlerWidget::connectAllFilteredViewSlots( FilteredView* view )
 
     connect( view, &AbstractLogView::clearColorLabels, this, &CrawlerWidget::clearColorLabels );
 
-    connect( view, &AbstractLogView::focusChanged, this,
-             &CrawlerWidget::updateInactiveViewDimming );
-
     connect( logMainView_, &LogMainView::exitView, view,
              QOverload<>::of( &FilteredView::setFocus ) );
 }
@@ -1651,6 +1602,12 @@ void CrawlerWidget::loadIcons()
     stopButton_->setIcon( iconLoader_.load( "icons8-close-window" ) );
 }
 
+void CrawlerWidget::updateInactiveViewDimming()
+{
+    logMainView_->setDimmed( filteredView_->hasFocus() );
+    filteredView_->setDimmed( logMainView_->hasFocus() );
+}
+
 // Create a new search using the text passed, replace the currently
 // used one and destroy the old one.
 void CrawlerWidget::saveFilteredViewSearchContext( FilteredView* view, const QString& searchText )
@@ -1721,18 +1678,17 @@ void CrawlerWidget::restoreFilteredViewSearchContext( FilteredView* view )
 void CrawlerWidget::replaceCurrentSearch( const QString& searchText )
 {
     LOG_INFO << "replacing current search with " << searchText;
-
     // Interrupt the search if it's ongoing
     logFilteredData_->interruptSearch();
 
-    // Wait for the search to actually stop before proceeding.
-    // This ensures the search update event (100%) has been processed
+    // We have to wait for the last search update (100%)
     // before clearing/restarting to avoid having remaining results.
-    constexpr int MaxWaitIterations = 100;
-    constexpr int WaitIntervalMs = 10;
-    for ( int i = 0; i < MaxWaitIterations && logFilteredData_->isSearchRunning(); ++i ) {
-        QThread::msleep( WaitIntervalMs );
-    }
+
+    // FIXME: this is a bit of a hack, we call processEvents
+    // for Qt to empty its event queue, including (hopefully)
+    // the search update event sent by logFilteredData_. It saves
+    // us the overhead of having proper sync.
+    QApplication::processEvents( QEventLoop::ExcludeUserInputEvents );
 
     nbMatches_ = 0_lcount;
 
