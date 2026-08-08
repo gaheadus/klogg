@@ -206,7 +206,6 @@ void LogFilteredDataWorker::search( const RegularExpressionPattern& regExp, Line
     ScopedLock locker( operationsMutex_ ); // to protect operationRequested_
     operationsPool_.waitForDone();
     interruptRequested_.clear();
-    searchInProgress_.set();
 
     LOG_INFO << "Search requested";
     QSemaphore operationStarted;
@@ -216,7 +215,6 @@ void LogFilteredDataWorker::search( const RegularExpressionPattern& regExp, Line
         auto operationRequested = std::make_unique<FullSearchOperation>(
             sourceLogData_, interruptRequested_, regExp, startLine, endLine );
         connectSignalsAndRun( operationRequested.get() );
-        searchInProgress_.clear();
     } ) );
     operationStarted.acquire();
 }
@@ -228,7 +226,6 @@ void LogFilteredDataWorker::updateSearch( const RegularExpressionPattern& regExp
     ScopedLock locker( operationsMutex_ ); // to protect operationRequested_
     operationsPool_.waitForDone();
     interruptRequested_.clear();
-    searchInProgress_.set();
 
     LOG_INFO << "Search update requested from " << position.get();
 
@@ -240,7 +237,6 @@ void LogFilteredDataWorker::updateSearch( const RegularExpressionPattern& regExp
             auto operationRequested = std::make_unique<UpdateSearchOperation>(
                 sourceLogData_, interruptRequested_, regExp, startLine, endLine, position );
             connectSignalsAndRun( operationRequested.get() );
-            searchInProgress_.clear();
         } ) );
 
     operationStarted.acquire();
@@ -250,11 +246,6 @@ void LogFilteredDataWorker::interrupt()
 {
     LOG_INFO << "Search interruption requested";
     interruptRequested_.set();
-}
-
-bool LogFilteredDataWorker::isSearchRunning() const
-{
-    return searchInProgress_.test();
 }
 
 // This will do an atomic copy of the object
