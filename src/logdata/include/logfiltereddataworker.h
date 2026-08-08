@@ -206,6 +206,9 @@ public:
     // Interrupts the search if one is in progress
     void interrupt();
 
+    // Check if a search is currently running
+    bool isSearchRunning() const;
+
     // get the current indexing data
     SearchResults getSearchResults() const;
 
@@ -223,6 +226,7 @@ private:
 private:
     const LogData& sourceLogData_;
     AtomicFlag interruptRequested_;
+    AtomicFlag searchInProgress_;
 
     QThreadPool operationsPool_;
     Mutex operationsMutex_;

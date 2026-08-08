@@ -146,6 +146,11 @@ void LogFilteredData::interruptSearch()
     workerThread_.interrupt();
 }
 
+bool LogFilteredData::isSearchRunning() const
+{
+    return workerThread_.isSearchRunning();
+}
+
 void LogFilteredData::clearSearch( bool dropCache )
 {
     interruptSearch();

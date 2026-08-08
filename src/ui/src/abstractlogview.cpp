@@ -467,6 +467,26 @@ void AbstractLogView::changeEvent( QEvent* changeEvent )
     viewport()->update();
 }
 
+void AbstractLogView::focusInEvent( QFocusEvent* focusEvent )
+{
+    QAbstractScrollArea::focusInEvent( focusEvent );
+    Q_EMIT focusChanged();
+}
+
+void AbstractLogView::focusOutEvent( QFocusEvent* focusEvent )
+{
+    QAbstractScrollArea::focusOutEvent( focusEvent );
+    Q_EMIT focusChanged();
+}
+
+void AbstractLogView::setDimmed( bool dimmed )
+{
+    if ( dimmed_ != dimmed ) {
+        dimmed_ = dimmed;
+        viewport()->update();
+    }
+}
+
 void AbstractLogView::mousePressEvent( QMouseEvent* mouseEvent )
 {
     auto line = convertCoordToLine( mouseEvent->pos().y() );
@@ -1155,6 +1175,11 @@ void AbstractLogView::paintEvent( QPaintEvent* paintEvent )
     // Draw the "pull to follow" zone if needed
     if ( pullToFollowHeight ) {
         devicePainter.drawPixmap( 0, drawingPullToFollowTopPosition, pullToFollowCache_.pixmap_ );
+    }
+
+    // Dim the view if it does not have focus.
+    if ( dimmed_ ) {
+        devicePainter.fillRect( viewport()->rect(), QColor( 0, 0, 0, 48 ) );
     }
 
     LOG_DEBUG << "End of repaint "
