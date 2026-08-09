@@ -91,6 +91,9 @@ class LogFilteredData : public AbstractLogData {
     // Check if a search is currently running
     bool isSearchRunning() const;
 
+    // Wait for the search to finish (replaces processEvents hack)
+    void waitForSearchFinished();
+
     // Clear the search and the list of results.
     void clearSearch( bool dropCache = false );
 
