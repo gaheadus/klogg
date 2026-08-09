@@ -200,10 +200,15 @@ void QuickFind::incrementallySearchForward( Selection selection, QuickFindMatche
         incrementalSearchStatus_ = IncrementalSearchStatus( Forward, start_position, selection );
     }
 
+#if QT_VERSION < QT_VERSION_CHECK( 6, 0, 0 )
+    operationFuture_ = QtConcurrent::run( this, &QuickFind::doSearchForward, start_position,
+                                          selection, matcher );
+#else
     operationFuture_ = QtConcurrent::run(
         qOverload<const FilePosition&, const Selection&, const QuickFindMatcher&>(
             &QuickFind::doSearchForward ),
         this, start_position, selection, matcher );
+#endif
 
     operationWatcher_.setFuture( operationFuture_ );
 }
@@ -229,10 +234,15 @@ void QuickFind::incrementallySearchBackward( Selection selection, QuickFindMatch
         incrementalSearchStatus_ = IncrementalSearchStatus( Backward, start_position, selection );
     }
 
+#if QT_VERSION < QT_VERSION_CHECK( 6, 0, 0 )
+    operationFuture_ = QtConcurrent::run( this, &QuickFind::doSearchBackward, start_position,
+                                          selection, matcher );
+#else
     operationFuture_ = QtConcurrent::run(
         qOverload<const FilePosition&, const Selection&, const QuickFindMatcher&>(
             &QuickFind::doSearchBackward ),
         this, start_position, selection, matcher );
+#endif
     operationWatcher_.setFuture( operationFuture_ );
 }
 
@@ -242,9 +252,13 @@ void QuickFind::searchForward( Selection selection, QuickFindMatcher matcher )
     interruptRequested_.set();
     operationWatcher_.waitForFinished();
 
+#if QT_VERSION < QT_VERSION_CHECK( 6, 0, 0 )
+    operationFuture_ = QtConcurrent::run( this, &QuickFind::doSearchForward, selection, matcher );
+#else
     operationFuture_ = QtConcurrent::run(
         qOverload<const Selection&, const QuickFindMatcher&>( &QuickFind::doSearchForward ), this,
         selection, matcher );
+#endif
     operationWatcher_.setFuture( operationFuture_ );
 }
 
@@ -254,9 +268,13 @@ void QuickFind::searchBackward( Selection selection, QuickFindMatcher matcher )
     interruptRequested_.set();
     operationWatcher_.waitForFinished();
 
+#if QT_VERSION < QT_VERSION_CHECK( 6, 0, 0 )
+    operationFuture_ = QtConcurrent::run( this, &QuickFind::doSearchBackward, selection, matcher );
+#else
     operationFuture_ = QtConcurrent::run(
         qOverload<const Selection&, const QuickFindMatcher&>( &QuickFind::doSearchBackward ), this,
         selection, matcher );
+#endif
     operationWatcher_.setFuture( operationFuture_ );
 }
 

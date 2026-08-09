@@ -209,9 +209,6 @@ public:
     // Check if a search is currently running
     bool isSearchRunning() const;
 
-    // Wait for the search to finish (used to replace processEvents hack)
-    void waitForSearchFinished();
-
     // get the current indexing data
     SearchResults getSearchResults() const;
 

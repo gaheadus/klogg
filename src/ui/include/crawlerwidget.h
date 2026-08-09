@@ -191,8 +191,6 @@ class CrawlerWidget : public QSplitter,
     // Stop the currently ongoing search (if one exists)
     void stopSearch();
     void loadIcons();
-    // Dim whichever of the two views does not currently hold focus.
-    void updateInactiveViewDimming();
     // QuickFind is being entered, save the focus for incremental qf.
     void enteringQuickFind();
     // QuickFind is being closed.
@@ -345,6 +343,7 @@ class CrawlerWidget : public QSplitter,
     void setup();
     void setShortcuts();
     void replaceCurrentSearch( const QString& searchText );
+    void continuePendingSearch();
     void updateSearchCombo();
     AbstractLogView* activeView() const;
     void printSearchInfoMessage( LinesCount nbMatches = 0_lcount );
@@ -438,6 +437,10 @@ class CrawlerWidget : public QSplitter,
 
     // Current number of matches
     LinesCount nbMatches_;
+
+    // Latest search text waiting for the running search to stop.
+    QString pendingSearchText_;
+    bool searchReplacementPending_ = false;
 
     LineNumber searchStartLine_;
     LineNumber searchEndLine_;
