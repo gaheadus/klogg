@@ -403,7 +403,6 @@ AbstractLogView::AbstractLogView( const AbstractLogData* newLogData,
     , quickFindPattern_( quickFindPattern )
     , quickFind_( new QuickFind( *newLogData ) )
     , pixmapFontMetrics_( this->font() )
-    , dimmedOverlayColor_( 0, 0, 0, 48 )
 {
     setViewport( nullptr );
 
@@ -465,55 +464,7 @@ void AbstractLogView::changeEvent( QEvent* changeEvent )
         if ( !isActiveWindow() )
             autoScrollTimer_.stop();
     }
-    else if ( changeEvent->type() == QEvent::PaletteChange ) {
-        updateDimmedOverlayColor();
-    }
     viewport()->update();
-}
-
-void AbstractLogView::focusInEvent( QFocusEvent* focusEvent )
-{
-    QAbstractScrollArea::focusInEvent( focusEvent );
-    Q_EMIT focusChanged();
-}
-
-void AbstractLogView::focusOutEvent( QFocusEvent* focusEvent )
-{
-    QAbstractScrollArea::focusOutEvent( focusEvent );
-    Q_EMIT focusChanged();
-}
-
-void AbstractLogView::setDimmed( bool dimmed )
-{
-    if ( dimmed_ != dimmed ) {
-        dimmed_ = dimmed;
-        updateDimmedOverlayColor();
-        viewport()->update();
-    }
-}
-
-void AbstractLogView::updateDimmedOverlayColor()
-{
-    // Adapt dimmed overlay color based on theme brightness
-    // Use multiple palette roles to determine the actual background color
-    const QColor baseColor = palette().color( QPalette::Base );
-    const QColor windowColor = palette().color( QPalette::Window );
-
-    // Use the average lightness of base and window colors for more accurate detection
-    const int avgLightness = ( baseColor.lightness() + windowColor.lightness() ) / 2;
-
-    if ( avgLightness > 128 ) {
-        // Light theme: use semi-transparent black overlay
-        dimmedOverlayColor_ = QColor( 0, 0, 0, 48 );
-    }
-    else {
-        // Dark theme: use semi-transparent white overlay
-        dimmedOverlayColor_ = QColor( 255, 255, 255, 48 );
-    }
-
-    LOG_DEBUG << "Dimmed overlay updated: theme lightness=" << avgLightness
-             << ", overlay=" << dimmedOverlayColor_.red() << "," << dimmedOverlayColor_.green()
-             << "," << dimmedOverlayColor_.blue();
 }
 
 void AbstractLogView::mousePressEvent( QMouseEvent* mouseEvent )
@@ -1209,11 +1160,6 @@ void AbstractLogView::paintEvent( QPaintEvent* paintEvent )
     // Draw the "pull to follow" zone if needed
     if ( pullToFollowHeight ) {
         devicePainter.drawPixmap( 0, drawingPullToFollowTopPosition, pullToFollowCache_.pixmap_ );
-    }
-
-    // Dim the view if it does not have focus.
-    if ( dimmed_ ) {
-        devicePainter.fillRect( viewport()->rect(), dimmedOverlayColor_ );
     }
 
     LOG_DEBUG << "End of repaint "
@@ -2478,8 +2424,6 @@ void AbstractLogView::drawTextArea( QPaintDevice* paintDevice )
         };
 
         klogg::vector<HighlightedMatch> sortedHighlights = highlighterMatches.matches();
-        // Reserve capacity to avoid frequent reallocations when there are many highlights
-        sortedHighlights.reserve( sortedHighlights.size() );
         std::transform( sortedHighlights.begin(), sortedHighlights.end(), sortedHighlights.begin(),
                         untabifyHighlight );
 

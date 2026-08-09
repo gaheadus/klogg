@@ -70,6 +70,8 @@
 
 #include "crawlerwidget.h"
 
+#include <QTimer>
+
 #include "configuration.h"
 #include "dispatch_to.h"
 #include "fontutils.h"
@@ -401,6 +403,8 @@ void CrawlerWidget::startNewSearch()
 
         connect( logFilteredData_.get(), &LogFilteredData::searchProgressed, this,
                  &CrawlerWidget::updateFilteredView, Qt::QueuedConnection );
+        connect( logFilteredData_.get(), &LogFilteredData::searchStopped, this,
+                 &CrawlerWidget::continuePendingSearch, Qt::QueuedConnection );
 
         Q_EMIT filteredViewChanged();
         logMainView_->useNewFiltering( logFilteredData_.get() );
@@ -1287,6 +1291,8 @@ void CrawlerWidget::setup()
 
     connect( logFilteredData_.get(), &LogFilteredData::searchProgressed, this,
              &CrawlerWidget::updateFilteredView, Qt::QueuedConnection );
+    connect( logFilteredData_.get(), &LogFilteredData::searchStopped, this,
+             &CrawlerWidget::continuePendingSearch, Qt::QueuedConnection );
 
     // Sent load file update to MainWindow (for status update)
     connect( logData_.get(), &LogData::loadingProgressed, this, &CrawlerWidget::loadingProgressed );
@@ -1327,12 +1333,6 @@ void CrawlerWidget::setup()
              [ this ]() { Q_EMIT replaceDataInScratchpad( logMainView_->getSelectedText() ); } );
 
     connectAllFilteredViewSlots( filteredView_ );
-
-    // Connect focus change signals for automatic view dimming
-    connect( logMainView_, &AbstractLogView::focusChanged, this,
-             &CrawlerWidget::updateInactiveViewDimming );
-    connect( filteredView_, &AbstractLogView::focusChanged, this,
-             &CrawlerWidget::updateInactiveViewDimming );
 
     const auto defaultEncodingMib = config.defaultEncodingMib();
     if ( defaultEncodingMib >= 0 ) {
@@ -1608,15 +1608,6 @@ void CrawlerWidget::loadIcons()
     stopButton_->setIcon( iconLoader_.load( "icons8-close-window" ) );
 }
 
-void CrawlerWidget::updateInactiveViewDimming()
-{
-    // Both log views remain readable regardless of which one holds focus.
-    // The dimmed overlay makes normal navigation between the views appear as
-    // a rendering error, so always clear it after a focus transition.
-    logMainView_->setDimmed( false );
-    filteredView_->setDimmed( false );
-}
-
 // Create a new search using the text passed, replace the currently
 // used one and destroy the old one.
 void CrawlerWidget::saveFilteredViewSearchContext( FilteredView* view, const QString& searchText )
@@ -1687,12 +1678,28 @@ void CrawlerWidget::restoreFilteredViewSearchContext( FilteredView* view )
 void CrawlerWidget::replaceCurrentSearch( const QString& searchText )
 {
     LOG_INFO << "replacing current search with " << searchText;
-    // Interrupt the search if it's ongoing
+    pendingSearchText_ = searchText;
+    searchReplacementPending_ = true;
     logFilteredData_->interruptSearch();
 
-    // Wait for the search to finish before clearing/restarting.
-    // This ensures the search update event (100%) has been processed.
-    logFilteredData_->waitForSearchFinished();
+    if ( !logFilteredData_->isSearchRunning() ) {
+        continuePendingSearch();
+    }
+}
+
+void CrawlerWidget::continuePendingSearch()
+{
+    if ( !searchReplacementPending_ ) {
+        return;
+    }
+    if ( logFilteredData_->isSearchRunning() ) {
+        QTimer::singleShot( 10, this, &CrawlerWidget::continuePendingSearch );
+        return;
+    }
+
+    const auto searchText = pendingSearchText_;
+    pendingSearchText_.clear();
+    searchReplacementPending_ = false;
 
     nbMatches_ = 0_lcount;
 

@@ -91,9 +91,6 @@ class LogFilteredData : public AbstractLogData {
     // Check if a search is currently running
     bool isSearchRunning() const;
 
-    // Wait for the search to finish (replaces processEvents hack)
-    void waitForSearchFinished();
-
     // Clear the search and the list of results.
     void clearSearch( bool dropCache = false );
 
@@ -148,6 +145,7 @@ class LogFilteredData : public AbstractLogData {
     // Sent when the search has progressed, give the number of matches (so far)
     // and the percentage of completion
     void searchProgressed( LinesCount nbMatches, int progress, LineNumber initialLine );
+    void searchStopped();
     void searchProgressedThrottled();
 
   private Q_SLOTS:
