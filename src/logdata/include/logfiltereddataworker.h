@@ -209,6 +209,9 @@ public:
     // Check if a search is currently running
     bool isSearchRunning() const;
 
+    // Wait for the search to finish (used to replace processEvents hack)
+    void waitForSearchFinished();
+
     // get the current indexing data
     SearchResults getSearchResults() const;
 
@@ -219,6 +222,10 @@ Q_SIGNALS:
     // Sent when indexing is finished, signals the client
     // to copy the new data back.
     void searchFinished();
+    // Sent when search starts running
+    void searchStarted();
+    // Sent when search stops running (finished, interrupted, or cancelled)
+    void searchStopped();
 
 private:
     void connectSignalsAndRun( SearchOperation* operationRequested );
@@ -226,7 +233,6 @@ private:
 private:
     const LogData& sourceLogData_;
     AtomicFlag interruptRequested_;
-    AtomicFlag searchInProgress_;
 
     QThreadPool operationsPool_;
     Mutex operationsMutex_;
