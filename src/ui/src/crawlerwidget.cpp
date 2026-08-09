@@ -1328,6 +1328,12 @@ void CrawlerWidget::setup()
 
     connectAllFilteredViewSlots( filteredView_ );
 
+    // Connect focus change signals for automatic view dimming
+    connect( logMainView_, &AbstractLogView::focusChanged, this,
+             &CrawlerWidget::updateInactiveViewDimming );
+    connect( filteredView_, &AbstractLogView::focusChanged, this,
+             &CrawlerWidget::updateInactiveViewDimming );
+
     const auto defaultEncodingMib = config.defaultEncodingMib();
     if ( defaultEncodingMib >= 0 ) {
         encodingMib_ = defaultEncodingMib;
@@ -1604,8 +1610,16 @@ void CrawlerWidget::loadIcons()
 
 void CrawlerWidget::updateInactiveViewDimming()
 {
-    logMainView_->setDimmed( filteredView_->hasFocus() );
-    filteredView_->setDimmed( logMainView_->hasFocus() );
+    // Use explicit focus checking to ensure consistent dimming behavior
+    // A view should only be dimmed if the OTHER view has focus
+    const bool mainHasFocus = logMainView_->hasFocus();
+    const bool filteredHasFocus = filteredView_->hasFocus();
+
+    // Only dim a view if the other view actually has focus
+    // This prevents incorrect dimming when focus state is temporarily inconsistent
+    // (e.g., during setFocus() calls or signal propagation)
+    logMainView_->setDimmed( filteredHasFocus && !mainHasFocus );
+    filteredView_->setDimmed( mainHasFocus && !filteredHasFocus );
 }
 
 // Create a new search using the text passed, replace the currently
@@ -1681,14 +1695,9 @@ void CrawlerWidget::replaceCurrentSearch( const QString& searchText )
     // Interrupt the search if it's ongoing
     logFilteredData_->interruptSearch();
 
-    // We have to wait for the last search update (100%)
-    // before clearing/restarting to avoid having remaining results.
-
-    // FIXME: this is a bit of a hack, we call processEvents
-    // for Qt to empty its event queue, including (hopefully)
-    // the search update event sent by logFilteredData_. It saves
-    // us the overhead of having proper sync.
-    QApplication::processEvents( QEventLoop::ExcludeUserInputEvents );
+    // Wait for the search to finish before clearing/restarting.
+    // This ensures the search update event (100%) has been processed.
+    logFilteredData_->waitForSearchFinished();
 
     nbMatches_ = 0_lcount;
 
