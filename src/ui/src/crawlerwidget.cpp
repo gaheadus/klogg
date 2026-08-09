@@ -1328,6 +1328,12 @@ void CrawlerWidget::setup()
 
     connectAllFilteredViewSlots( filteredView_ );
 
+    // Connect focus change signals for automatic view dimming
+    connect( logMainView_, &AbstractLogView::focusChanged, this,
+             &CrawlerWidget::updateInactiveViewDimming );
+    connect( filteredView_, &AbstractLogView::focusChanged, this,
+             &CrawlerWidget::updateInactiveViewDimming );
+
     const auto defaultEncodingMib = config.defaultEncodingMib();
     if ( defaultEncodingMib >= 0 ) {
         encodingMib_ = defaultEncodingMib;
@@ -1604,8 +1610,21 @@ void CrawlerWidget::loadIcons()
 
 void CrawlerWidget::updateInactiveViewDimming()
 {
-    logMainView_->setDimmed( filteredView_->hasFocus() );
-    filteredView_->setDimmed( logMainView_->hasFocus() );
+    // Inspect Qt's current focus widget rather than the scroll-area widgets.
+    // Clicks can give focus to a view's viewport or another child widget.
+    const auto* focusWidget = QApplication::focusWidget();
+    const auto belongsToView = [ focusWidget ]( const auto* view ) {
+        return focusWidget != nullptr
+               && ( focusWidget == view || view->isAncestorOf( focusWidget ) );
+    };
+
+    const bool mainHasFocus = belongsToView( logMainView_ );
+    const bool filteredHasFocus = belongsToView( filteredView_ );
+
+    // Only dim a view when the other view is the active focus owner. If focus
+    // is outside both views, leave both views undimmed.
+    logMainView_->setDimmed( filteredHasFocus && !mainHasFocus );
+    filteredView_->setDimmed( mainHasFocus && !filteredHasFocus );
 }
 
 // Create a new search using the text passed, replace the currently
@@ -1681,14 +1700,9 @@ void CrawlerWidget::replaceCurrentSearch( const QString& searchText )
     // Interrupt the search if it's ongoing
     logFilteredData_->interruptSearch();
 
-    // We have to wait for the last search update (100%)
-    // before clearing/restarting to avoid having remaining results.
-
-    // FIXME: this is a bit of a hack, we call processEvents
-    // for Qt to empty its event queue, including (hopefully)
-    // the search update event sent by logFilteredData_. It saves
-    // us the overhead of having proper sync.
-    QApplication::processEvents( QEventLoop::ExcludeUserInputEvents );
+    // Wait for the search to finish before clearing/restarting.
+    // This ensures the search update event (100%) has been processed.
+    logFilteredData_->waitForSearchFinished();
 
     nbMatches_ = 0_lcount;
 
