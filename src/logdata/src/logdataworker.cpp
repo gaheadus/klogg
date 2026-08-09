@@ -36,6 +36,7 @@
  * along with klogg.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <array>
 #include <chrono>
 #include <exception>
 #include <functional>
@@ -507,8 +508,8 @@ void IndexOperation::guessEncoding( const klogg::vector<char>& block,
               << state.encodingParams.lineFeedWidth;
 }
 
-std::chrono::microseconds IndexOperation::readFileInBlocks( QFile& file,
-                                                            BlockPrefetcher& blockPrefetcher )
+std::chrono::microseconds IndexOperation::readFileInBlocks( QFile& file, BlockPrefetcher& blockPrefetcher,
+                                                            BufferPool& bufferPool )
 {
     using namespace std::chrono;
     using clock = high_resolution_clock;
@@ -524,7 +525,8 @@ std::chrono::microseconds IndexOperation::readFileInBlocks( QFile& file,
             break;
         }
 
-        BlockData blockData{ file.pos(), new klogg::vector<char>( IndexingBlockSize ) };
+        klogg::vector<char>* buffer = bufferPool.acquire();
+        BlockData blockData{ file.pos(), buffer };
 
         clock::time_point ioT1 = clock::now();
         const auto readBytes
@@ -532,7 +534,8 @@ std::chrono::microseconds IndexOperation::readFileInBlocks( QFile& file,
 
         if ( readBytes < 0 ) {
             LOG_ERROR << "Reading past the end of file";
-            break;
+            bufferPool.release( buffer );
+            continue;
         }
 
         if ( readBytes < klogg::ssize( *blockData.second ) ) {
@@ -547,15 +550,25 @@ std::chrono::microseconds IndexOperation::readFileInBlocks( QFile& file,
             LOG_INFO << "Sending block " << blockData.first << " size " << blockData.second->size();
         }
 
+        // Keep track of buffer in case try_put fails and we need to release
         while ( !blockPrefetcher.try_put( std::move( blockData ) ) && !interruptRequest_ ) {
             std::this_thread::sleep_for( std::chrono::milliseconds( 1 ) );
+        }
+        // If interrupted and blockData was not put (try_put returned false),
+        // blockData.second is still valid and needs to be released
+        if ( interruptRequest_ && blockData.second != nullptr ) {
+            bufferPool.release( blockData.second );
         }
         sentBlocksCount++;
     }
 
-    auto lastBlock = std::make_pair( -1, new klogg::vector<char>{} );
+    auto lastBlock = std::make_pair( -1, bufferPool.acquire() );
     while ( !blockPrefetcher.try_put( lastBlock ) && !interruptRequest_ ) {
         std::this_thread::sleep_for( std::chrono::milliseconds( 1 ) );
+    }
+    // If interrupted after getting lastBlock buffer, release it
+    if ( interruptRequest_ && lastBlock.second != nullptr ) {
+        bufferPool.release( lastBlock.second );
     }
 
     LOG_INFO << "IO thread done";
@@ -657,14 +670,17 @@ void IndexOperation::doIndex( OffsetInFile initialPosition )
 
     const auto indexingStartTime = clock::now();
 
+    // Use buffer pool to avoid repeated allocations
+    BufferPool bufferPool;
+
     tbb::flow::graph indexingGraph;
     auto blockPrefetcher = tbb::flow::limiter_node<BlockData>( indexingGraph, prefetchBufferSize );
     auto blockQueue = tbb::flow::queue_node<BlockData>( indexingGraph );
 
     auto blockParser = tbb::flow::function_node<BlockData, tbb::flow::continue_msg>(
-        indexingGraph, tbb::flow::serial, [ this, &state ]( const BlockData& blockData ) {
+        indexingGraph, tbb::flow::serial, [ this, &state, &bufferPool ]( const BlockData& blockData ) {
             indexNextBlock( state, blockData );
-            delete blockData.second;
+            bufferPool.release( blockData.second );
             return tbb::flow::continue_msg{};
         } );
 
@@ -673,8 +689,10 @@ void IndexOperation::doIndex( OffsetInFile initialPosition )
     tbb::flow::make_edge( blockParser, blockPrefetcher.decrementer() );
 
     file.seek( state.pos );
-    ioDuration = readFileInBlocks( file, blockPrefetcher );
+    ioDuration = readFileInBlocks( file, blockPrefetcher, bufferPool );
     indexingGraph.wait_for_all();
+
+    // Pool will be automatically reset when it goes out of scope
 
     IndexingData::MutateAccessor scopedAccessor{ indexing_data_.get() };
 
