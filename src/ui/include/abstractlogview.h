@@ -134,6 +134,9 @@ class AbstractLogView : public QAbstractScrollArea, public SearchableWidgetInter
     // Dim the view (drawn faded) to indicate it does not hold focus.
     void setDimmed( bool dimmed );
 
+    // Update dimmed overlay color based on current theme
+    void updateDimmedOverlayColor();
+
     // Return the line number of the top line of the view
     LineNumber getTopLine() const;
     // Return the text of the current selection.
@@ -378,6 +381,10 @@ class AbstractLogView : public QAbstractScrollArea, public SearchableWidgetInter
     bool useTextWrap_ = false;
     // When true the view is drawn faded to show it does not hold focus.
     bool dimmed_ = false;
+
+    // Cached color for dimmed overlay to avoid repeated allocations
+    QColor dimmedOverlayColor_;
+
     LineColumn firstCol_ = 0_lcol;
 
     struct WrappedLineData {

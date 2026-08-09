@@ -36,6 +36,7 @@
  * along with klogg.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <exception>
@@ -61,6 +62,65 @@
 #include "synchronization.h"
 
 namespace {
+
+// Memory pool for SearchBlockData to avoid heap allocations during search
+// Uses a free list for O(1) allocation and deallocation
+class SearchBlockPool {
+public:
+    static constexpr size_t PoolSize = 32;
+
+    SearchBlockPool()
+    {
+        // Initialize free list
+        for ( size_t i = 0; i < PoolSize; ++i ) {
+            pool_[ i ].nextFree = ( i < PoolSize - 1 ) ? &pool_[ i + 1 ] : nullptr;
+        }
+        freeList_ = &pool_[ 0 ];
+    }
+
+    SearchBlockData* acquire()
+    {
+        if ( freeList_ != nullptr ) {
+            SearchBlockData* block = freeList_;
+            freeList_ = freeList_->nextFree;
+            return block;
+        }
+        // Pool exhausted, allocate normally
+        return new SearchBlockData();
+    }
+
+    void release( SearchBlockData* block )
+    {
+        if ( block >= pool_.data() && block < pool_.data() + PoolSize ) {
+            // Reset the block for reuse
+            block->chunkStart = LineNumber{};
+            block->lines = {};
+            block->searchResults = {};
+            // Push to free list head
+            block->nextFree = freeList_;
+            freeList_ = block;
+        }
+        else {
+            delete block;
+        }
+    }
+
+    void reset()
+    {
+        freeList_ = &pool_[ 0 ];
+        for ( size_t i = 0; i < PoolSize; ++i ) {
+            pool_[ i ].chunkStart = LineNumber{};
+            pool_[ i ].lines = {};
+            pool_[ i ].searchResults = {};
+            pool_[ i ].nextFree = ( i < PoolSize - 1 ) ? &pool_[ i + 1 ] : nullptr;
+        }
+    }
+
+private:
+    std::array<SearchBlockData, PoolSize> pool_;
+    SearchBlockData* freeList_ = nullptr;
+};
+
 struct PartialSearchResults {
     PartialSearchResults() = default;
 
@@ -94,6 +154,9 @@ struct SearchBlockData {
     LogData::RawLines lines;
 
     PartialSearchResults searchResults;
+
+    // Internal use by SearchBlockPool (free list pointer)
+    SearchBlockData* nextFree = nullptr;
 };
 
 PartialSearchResults filterLines( const PatternMatcher& matcher, const LogData::RawLines& rawLines,
@@ -253,6 +316,11 @@ bool LogFilteredDataWorker::isSearchRunning() const
     return operationsPool_.activeThreadCount() > 0;
 }
 
+void LogFilteredDataWorker::waitForSearchFinished()
+{
+    operationsPool_.waitForDone();
+}
+
 // This will do an atomic copy of the object
 SearchResults LogFilteredDataWorker::getSearchResults() const
 {
@@ -309,6 +377,9 @@ void SearchOperation::doSearch( SearchData& searchData, LineNumber initialLine )
 
     std::chrono::microseconds fileReadingDuration{ 0 };
 
+    // Use object pool to avoid heap allocations
+    SearchBlockPool blockPool;
+
     using BlockDataType = SearchBlockData*;
     auto blockPrefetcher
         = tbb::flow::limiter_node<BlockDataType>( searchGraph, matchingThreadsCount * 3 );
@@ -328,13 +399,15 @@ void SearchOperation::doSearch( SearchData& searchData, LineNumber initialLine )
         regexMatchers.emplace_back(
             regularExpression.createMatcher(), microseconds{ 0 },
             RegexMatcherNode(
-                searchGraph, 1, [ &regexMatchers, index, this ]( const BlockDataType& blockData ) {
+                searchGraph, 1, [ &regexMatchers, index, this, &blockPool ]( const BlockDataType& blockData ) {
                     if ( interruptRequested_ ) {
                         LOG_INFO << "Matcher " << index << " interrupted";
                         auto results = std::make_shared<PartialSearchResults>();
                         blockData->searchResults.chunkStart = blockData->chunkStart;
                         blockData->searchResults.processedLines
                             = LinesCount{ blockData->lines.endOfLines.size() };
+                        // Release block to pool before returning
+                        blockPool.release( blockData );
                         return blockData;
                     }
 
@@ -369,9 +442,10 @@ void SearchOperation::doSearch( SearchData& searchData, LineNumber initialLine )
 
     auto matchProcessor
         = tbb::flow::function_node<BlockDataType, tbb::flow::continue_msg, tbb::flow::rejecting>(
-            searchGraph, 1, [ & ]( const BlockDataType& blockData ) {
+            searchGraph, 1, [ &, this ]( const BlockDataType& blockData ) {
                 if ( interruptRequested_ ) {
                     LOG_INFO << "Match processor interrupted";
+                    blockPool.release( blockData );
                     return tbb::flow::continue_msg{};
                 }
 
@@ -400,7 +474,8 @@ void SearchOperation::doSearch( SearchData& searchData, LineNumber initialLine )
                               << ", " << matchResults.processedLines << " lines read.";
                 }
 
-                delete blockData;
+                // Return block to pool instead of deleting
+                blockPool.release( blockData );
 
                 const auto matchProcessorEndTime = high_resolution_clock::now();
                 matchCombiningDuration += duration_cast<microseconds>( matchProcessorEndTime
@@ -441,7 +516,11 @@ void SearchOperation::doSearch( SearchData& searchData, LineNumber initialLine )
         /*LOG_DEBUG << "Sending chunk starting at " << chunkStart << ", " <<
             lines.second.size()
                 << " lines read.";*/
-        BlockDataType blockData = new SearchBlockData{ chunkStart, std::move( lines ) };
+        // Acquire block from pool instead of new
+        BlockDataType blockData = blockPool.acquire();
+        blockData->chunkStart = chunkStart;
+        blockData->lines = std::move( lines );
+        blockData->searchResults = {};
 
         const auto lineSourceEndTime = high_resolution_clock::now();
         const auto chunkReadTime
@@ -459,10 +538,15 @@ void SearchOperation::doSearch( SearchData& searchData, LineNumber initialLine )
         while ( !blockPrefetcher.try_put( blockData ) && !interruptRequested_ ) {
             std::this_thread::sleep_for( std::chrono::milliseconds( 1 ) );
         }
+        // If interrupted and blockData was not put into queue, release it back to pool
+        if ( interruptRequested_ && blockData != nullptr ) {
+            blockPool.release( blockData );
+        }
     }
 
     searchGraph.wait_for_all();
 
+    // Pool will be automatically reset when it goes out of scope
     high_resolution_clock::time_point t2 = high_resolution_clock::now();
     const auto durationUs = duration_cast<microseconds>( t2 - t1 );
     const auto durationMs = duration_cast<milliseconds>( t2 - t1 );

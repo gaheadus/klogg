@@ -151,6 +151,11 @@ bool LogFilteredData::isSearchRunning() const
     return workerThread_.isSearchRunning();
 }
 
+void LogFilteredData::waitForSearchFinished()
+{
+    workerThread_.waitForSearchFinished();
+}
+
 void LogFilteredData::clearSearch( bool dropCache )
 {
     interruptSearch();

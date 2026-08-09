@@ -279,6 +279,83 @@ public:
     // and false if it has been cancelled (results not copied)
     virtual OperationResult run() = 0;
 
+    // Buffer pool for file reading to avoid repeated allocations
+    // Uses a free list for O(1) allocation and deallocation
+    class BufferPool {
+    public:
+        static constexpr size_t PoolSize = 8;
+        static constexpr size_t BufferSize = IndexingBlockSize;
+
+        BufferPool()
+        {
+            // Initialize free list
+            for ( size_t i = 0; i < PoolSize; ++i ) {
+                pool_[ i ] = new klogg::vector<char>( BufferSize );
+                freeList_[ i ] = pool_[ i ];
+                nextFree_[ i ] = ( i < PoolSize - 1 ) ? i + 1 : PoolSize; // PoolSize = sentinel
+            }
+            freeHead_ = 0;
+            freeCount_ = PoolSize;
+        }
+
+        ~BufferPool()
+        {
+            for ( size_t i = 0; i < PoolSize; ++i ) {
+                delete pool_[ i ];
+            }
+        }
+
+        // Disable copy
+        BufferPool( const BufferPool& ) = delete;
+        BufferPool& operator=( const BufferPool& ) = delete;
+
+        klogg::vector<char>* acquire()
+        {
+            if ( freeCount_ > 0 ) {
+                klogg::vector<char>* buffer = freeList_[ freeHead_ ];
+                freeHead_ = nextFree_[ freeHead_ ];
+                --freeCount_;
+                return buffer;
+            }
+            return new klogg::vector<char>( BufferSize );
+        }
+
+        void release( klogg::vector<char>* buffer )
+        {
+            // Check if buffer belongs to pool using pointer arithmetic
+            if ( buffer >= pool_ && buffer < pool_ + PoolSize ) {
+                buffer->clear();
+                // Push to free list head
+                const size_t index = buffer - pool_;
+                nextFree_[ index ] = freeHead_;
+                freeList_[ index ] = buffer;
+                freeHead_ = index;
+                ++freeCount_;
+            }
+            else {
+                delete buffer;
+            }
+        }
+
+        void reset()
+        {
+            freeHead_ = 0;
+            freeCount_ = PoolSize;
+            for ( size_t i = 0; i < PoolSize; ++i ) {
+                pool_[ i ]->clear();
+                freeList_[ i ] = pool_[ i ];
+                nextFree_[ i ] = ( i < PoolSize - 1 ) ? i + 1 : PoolSize;
+            }
+        }
+
+    private:
+        klogg::vector<char>* pool_[ PoolSize ];
+        klogg::vector<char>* freeList_[ PoolSize ];
+        size_t nextFree_[ PoolSize ];
+        size_t freeHead_ = 0;
+        size_t freeCount_ = 0;
+    };
+
 Q_SIGNALS:
     void indexingProgressed( int );
     void indexingFinished( bool );
