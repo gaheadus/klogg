@@ -123,6 +123,11 @@ class LogFilteredData : public AbstractLogData {
     void clearMarks();
     // Get all marked lines
     QList<LineNumber> getMarks() const;
+    bool hasOwnMark( LineNumber line ) const;
+
+    // Change only the marks used for display/navigation. The tab-local marks remain unchanged.
+    void setDisplayedMarks( const SearchResultArray& marks, LineLength maxLengthMarks );
+    void useOwnMarksForDisplay();
 
     // Changes what the AbstractLogData returns via its getXLines/getNbLines
     // API.
@@ -178,6 +183,10 @@ class LogFilteredData : public AbstractLogData {
     SearchResultArray matching_lines_;
     SearchResultArray marks_;
     SearchResultArray marks_and_matches_;
+    SearchResultArray displayed_marks_;
+    SearchResultArray displayed_marks_and_matches_;
+    LineLength displayedMaxLengthMarks_ = 0_length;
+    bool useDisplayedMarks_ = false;
 
     const LogData* sourceLogData_;
 

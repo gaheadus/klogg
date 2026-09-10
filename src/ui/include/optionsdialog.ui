@@ -317,6 +317,13 @@
             </item>
            </layout>
           </item>
+          <item>
+           <widget class="QCheckBox" name="showMarksFromAllSearchTabsCheckBox">
+            <property name="text">
+             <string>Show marks from all search result tabs</string>
+            </property>
+           </widget>
+          </item>
          </layout>
         </widget>
        </item>

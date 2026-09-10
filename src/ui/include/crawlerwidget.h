@@ -361,6 +361,7 @@ class CrawlerWidget : public QSplitter,
     void resetStateOnSearchPatternChanges();
 
     void updateColorLabels( const ColorLabelsManager::QuickHighlightersCollection& labels );
+    void updateDisplayedMarks();
 
     void connectAllFilteredViewSlots( FilteredView* view);
 

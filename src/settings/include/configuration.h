@@ -265,6 +265,14 @@ class Configuration final : public Persistable<Configuration> {
     {
         return overviewVisible_;
     }
+    bool showMarksFromAllSearchTabs() const
+    {
+        return showMarksFromAllSearchTabs_;
+    }
+    void setShowMarksFromAllSearchTabs( bool enabled )
+    {
+        showMarksFromAllSearchTabs_ = enabled;
+    }
     void setOverviewVisible( bool isVisible )
     {
         overviewVisible_ = isVisible;
@@ -559,6 +567,7 @@ class Configuration final : public Persistable<Configuration> {
 
     // View settings
     bool overviewVisible_ = true;
+    bool showMarksFromAllSearchTabs_ = false;
     bool lineNumbersVisibleInMain_ = false;
     bool lineNumbersVisibleInFiltered_ = true;
     bool minimizeToTray_ = false;

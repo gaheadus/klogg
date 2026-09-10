@@ -270,6 +270,7 @@ void CrawlerWidget::reload()
     constexpr auto DropCache = true;
     logFilteredData_->clearSearch( DropCache );
     logFilteredData_->clearMarks();
+    updateDisplayedMarks();
     filteredView_->updateData();
     printSearchInfoMessage();
 
@@ -577,6 +578,33 @@ void CrawlerWidget::updateLineNumberHandler( LineNumber line, LinesCount nLines,
     Q_EMIT newSelection( line, nLines, startCol, nSymbols );
 }
 
+void CrawlerWidget::updateDisplayedMarks()
+{
+    const auto& config = Configuration::get();
+    if ( !config.showMarksFromAllSearchTabs() ) {
+        for ( const auto& [ view, data ] : filteredViewsData_ ) {
+            data->useOwnMarksForDisplay();
+            view->updateData();
+        }
+        return;
+    }
+
+    SearchResultArray allMarks;
+    LineLength maxLengthMarks = 0_length;
+    for ( const auto& [ view, data ] : filteredViewsData_ ) {
+        Q_UNUSED( view );
+        for ( const auto& line : data->getMarks() ) {
+            allMarks.add( line.get() );
+            maxLengthMarks = qMax( maxLengthMarks, logData_->getLineLength( line ) );
+        }
+    }
+
+    for ( const auto& [ view, data ] : filteredViewsData_ ) {
+        data->setDisplayedMarks( allMarks, maxLengthMarks );
+        view->updateData();
+    }
+}
+
 void CrawlerWidget::markLinesFromMain( const klogg::vector<LineNumber>& lines )
 {
     klogg::vector<LineNumber> alreadyMarkedLines;
@@ -588,8 +616,7 @@ void CrawlerWidget::markLinesFromMain( const klogg::vector<LineNumber>& lines )
             continue;
         }
 
-        if ( !logFilteredData_->lineTypeByLine( line ).testFlag(
-                 AbstractLogData::LineTypeFlags::Mark ) ) {
+        if ( !logFilteredData_->hasOwnMark( line ) ) {
             logFilteredData_->addMark( line );
             markAdded = true;
         }
@@ -603,6 +630,8 @@ void CrawlerWidget::markLinesFromMain( const klogg::vector<LineNumber>& lines )
             logFilteredData_->toggleMark( line );
         }
     }
+
+    updateDisplayedMarks();
 
     // Recompute the content of both window.
     filteredView_->updateData();
@@ -683,6 +712,7 @@ void CrawlerWidget::applyConfiguration()
     }
 
     reloadPredefinedFilters();
+    updateDisplayedMarks();
 }
 
 void CrawlerWidget::enteringQuickFind()
@@ -749,6 +779,7 @@ void CrawlerWidget::loadingFinishedHandler( LoadingStatus status )
         logMainView_->setFocus();
     }
 
+    updateDisplayedMarks();
     loadingInProgress_ = false;
     Q_EMIT loadingFinished( status );
 }
@@ -759,6 +790,7 @@ void CrawlerWidget::fileChangedHandler( MonitoredFileStatus status )
     if ( status == MonitoredFileStatus::Truncated ) {
         // Clear all marks (TODO offer the option to keep them)
         logFilteredData_->clearMarks();
+        updateDisplayedMarks();
         if ( !searchInfoLine_->text().isEmpty() ) {
             // Invalidate the search
             constexpr auto DropCache = true;
@@ -1355,6 +1387,7 @@ void CrawlerWidget::changeFilteredView( int tabIndex )
 
     logMainView_->useNewFiltering( logFilteredData_.get() );
     changeFilteredViewVisibility( visibilityBox_->currentIndex() );
+    updateDisplayedMarks();
 }
 
 void CrawlerWidget::closeFilteredView( int tabIndex )
@@ -1370,6 +1403,7 @@ void CrawlerWidget::filteredViewDestroyed( QObject* view )
     auto* filteredView = qobject_cast<FilteredView*>( view );
     filteredViewsData_.erase( filteredView );
     filteredViewsSearchContext_.erase( filteredView );
+    updateDisplayedMarks();
 }
 
 void CrawlerWidget::saveSplitterSizes() const
@@ -1729,11 +1763,6 @@ void CrawlerWidget::replaceCurrentSearch( const QString& searchText )
             // Inform the user
             QString errorString = hsExpression.errorString();
             QString errorMessage = tr( "Error in expression" );
-            // const int offset = regexp.patternErrorOffset();
-            // if ( offset != -1 ) {
-            //     errorMessage += " at position ";
-            //     errorMessage += QString::number( offset );
-            // }
             errorMessage += ": ";
             errorMessage += errorString;
             searchInfoLine_->setPalette( ErrorPalette );

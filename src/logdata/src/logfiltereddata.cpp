@@ -117,6 +117,9 @@ void LogFilteredData::runSearch( const RegularExpressionPattern& regExp, LineNum
             maxLength_ = cachedResults->second.maxLength;
 
             marks_and_matches_ = matching_lines_ | marks_;
+            if ( useDisplayedMarks_ ) {
+                displayed_marks_and_matches_ = matching_lines_ | displayed_marks_;
+            }
 
             Q_EMIT searchProgressed( LinesCount( matching_lines_.cardinality() ), 100, startLine );
         }
@@ -153,6 +156,9 @@ void LogFilteredData::clearSearch( bool dropCache )
     currentRegExp_ = {};
     matching_lines_ = {};
     marks_and_matches_ = marks_;
+    if ( useDisplayedMarks_ ) {
+        displayed_marks_and_matches_ = displayed_marks_;
+    }
     maxLength_ = 0_length;
     nbLinesProcessed_ = 0_lcount;
 
@@ -189,7 +195,7 @@ LinesCount LogFilteredData::getNbMatches() const
 
 LinesCount LogFilteredData::getNbMarks() const
 {
-    return LinesCount( marks_.cardinality() );
+    return LinesCount( useDisplayedMarks_ ? displayed_marks_.cardinality() : marks_.cardinality() );
 }
 
 LogFilteredData::LineType LogFilteredData::lineTypeByIndex( LineNumber index ) const
@@ -254,15 +260,16 @@ void LogFilteredData::addMark( LineNumber line )
 
 bool LogFilteredData::isLineMarked( LineNumber line ) const
 {
-    return marks_.contains( line.get() );
+    return ( useDisplayedMarks_ ? displayed_marks_ : marks_ ).contains( line.get() );
 }
 
 OptionalLineNumber LogFilteredData::getMarkAfter( LineNumber line ) const
 {
     OptionalLineNumber marked_line;
-    const LineNumber::UnderlyingType rank = marks_.rank( line.get() );
+    const auto& displayedMarks = useDisplayedMarks_ ? displayed_marks_ : marks_;
+    const LineNumber::UnderlyingType rank = displayedMarks.rank( line.get() );
     LineNumber::UnderlyingType nextMark;
-    if ( marks_.select( rank, &nextMark ) ) {
+    if ( displayedMarks.select( rank, &nextMark ) ) {
         marked_line = LineNumber( nextMark );
     }
 
@@ -273,14 +280,15 @@ OptionalLineNumber LogFilteredData::getMarkBefore( LineNumber line ) const
 {
     OptionalLineNumber marked_line;
 
-    const LineNumber::UnderlyingType rank = marks_.rank( line.get() );
+    const auto& displayedMarks = useDisplayedMarks_ ? displayed_marks_ : marks_;
+    const LineNumber::UnderlyingType rank = displayedMarks.rank( line.get() );
 
     if ( rank < 2 ) {
         return marked_line;
     }
 
     LineNumber::UnderlyingType nextMark;
-    if ( marks_.select( rank - 2, &nextMark ) ) {
+    if ( displayedMarks.select( rank - 2, &nextMark ) ) {
         marked_line = LineNumber( nextMark );
     }
 
@@ -323,6 +331,33 @@ void LogFilteredData::clearMarks()
 {
     marks_ = {};
     maxLengthMarks_ = 0_length;
+
+    if ( useDisplayedMarks_ ) {
+        displayed_marks_ = {};
+        displayed_marks_and_matches_ = matching_lines_;
+        displayedMaxLengthMarks_ = 0_length;
+    }
+}
+
+void LogFilteredData::setDisplayedMarks( const SearchResultArray& marks, LineLength maxLengthMarks )
+{
+    useDisplayedMarks_ = true;
+    displayed_marks_ = marks;
+    displayedMaxLengthMarks_ = maxLengthMarks;
+    displayed_marks_and_matches_ = matching_lines_ | displayed_marks_;
+}
+
+void LogFilteredData::useOwnMarksForDisplay()
+{
+    useDisplayedMarks_ = false;
+    displayed_marks_ = {};
+    displayed_marks_and_matches_ = marks_and_matches_;
+    displayedMaxLengthMarks_ = 0_length;
+}
+
+bool LogFilteredData::hasOwnMark( LineNumber line ) const
+{
+    return marks_.contains( line.get() );
 }
 
 QList<LineNumber> LogFilteredData::getMarks() const
@@ -403,6 +438,9 @@ void LogFilteredData::handleSearchProgressed( LinesCount nbMatches, int progress
 
     matching_lines_ |= searchResults.newMatches;
     marks_and_matches_ |= searchResults.newMatches;
+    if ( useDisplayedMarks_ ) {
+        displayed_marks_and_matches_ |= searchResults.newMatches;
+    }
 
     maxLength_ = searchResults.maxLength;
     nbLinesProcessed_ = searchResults.processedLines;
@@ -461,13 +499,13 @@ const SearchResultArray& LogFilteredData::currentResultArray() const
 {
     if ( visibility_.testFlag( VisibilityFlags::Marks )
          && visibility_.testFlag( VisibilityFlags::Matches ) ) {
-        return marks_and_matches_;
+        return useDisplayedMarks_ ? displayed_marks_and_matches_ : marks_and_matches_;
     }
     else if ( visibility_.testFlag( VisibilityFlags::Matches ) ) {
         return matching_lines_;
     }
     else {
-        return marks_;
+        return useDisplayedMarks_ ? displayed_marks_ : marks_;
     }
 }
 
@@ -540,7 +578,7 @@ LinesCount LogFilteredData::doGetNbLine() const
 // Implementation of the virtual function.
 LineLength LogFilteredData::doGetMaxLength() const
 {
-    return qMax( maxLength_, maxLengthMarks_ );
+    return qMax( maxLength_, useDisplayedMarks_ ? displayedMaxLengthMarks_ : maxLengthMarks_ );
 }
 
 // Implementation of the virtual function.

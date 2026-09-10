@@ -263,6 +263,10 @@ void Configuration::retrieveFromStorage( QSettings& settings )
     // View settings
     overviewVisible_
         = settings.value( "view.overviewVisible", DefaultConfiguration.overviewVisible_ ).toBool();
+    showMarksFromAllSearchTabs_
+        = settings.value( "view.showMarksFromAllSearchTabs",
+                          DefaultConfiguration.showMarksFromAllSearchTabs_ )
+              .toBool();
     lineNumbersVisibleInMain_ = settings
                                     .value( "view.lineNumbersVisibleInMain",
                                             DefaultConfiguration.lineNumbersVisibleInMain_ )
@@ -406,6 +410,7 @@ void Configuration::saveToStorage( QSettings& settings ) const
     settings.setValue( "net.verifySslPeers", verifySslPeers_ );
 
     settings.setValue( "view.overviewVisible", overviewVisible_ );
+    settings.setValue( "view.showMarksFromAllSearchTabs", showMarksFromAllSearchTabs_ );
     settings.setValue( "view.lineNumbersVisibleInMain", lineNumbersVisibleInMain_ );
     settings.setValue( "view.lineNumbersVisibleInFiltered", lineNumbersVisibleInFiltered_ );
     settings.setValue( "view.minimizeToTray", minimizeToTray_ );
