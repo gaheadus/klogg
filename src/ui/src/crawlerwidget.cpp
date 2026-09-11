@@ -586,8 +586,8 @@ void CrawlerWidget::updateDisplayedMarks()
 {
     const auto& config = Configuration::get();
     if ( !config.showMarksFromAllSearchTabs() ) {
-        for ( const auto& [ view, data ] : filteredViewsData_ ) {
-            data->useOwnMarksForDisplay();
+        for ( const auto& [ view, filteredData ] : filteredViewsData_ ) {
+            filteredData->useOwnMarksForDisplay();
             view->updateData();
         }
         return;
@@ -595,16 +595,16 @@ void CrawlerWidget::updateDisplayedMarks()
 
     SearchResultArray allMarks;
     LineLength maxLengthMarks = 0_length;
-    for ( const auto& [ view, data ] : filteredViewsData_ ) {
+    for ( const auto& [ view, filteredData ] : filteredViewsData_ ) {
         Q_UNUSED( view );
-        for ( const auto& line : data->getMarks() ) {
+        for ( const auto& line : filteredData->getMarks() ) {
             allMarks.add( line.get() );
             maxLengthMarks = qMax( maxLengthMarks, logData_->getLineLength( line ) );
         }
     }
 
-    for ( const auto& [ view, data ] : filteredViewsData_ ) {
-        data->setDisplayedMarks( allMarks, maxLengthMarks );
+    for ( const auto& [ view, filteredData ] : filteredViewsData_ ) {
+        filteredData->setDisplayedMarks( allMarks, maxLengthMarks );
         view->updateData();
     }
 }
@@ -1391,10 +1391,16 @@ void CrawlerWidget::changeFilteredView( int tabIndex )
 
     logMainView_->useNewFiltering( logFilteredData_.get() );
 
+    using VisibilityFlags = LogFilteredData::VisibilityFlags;
     const auto visibility = filteredView_->visibility();
     int visibilityIndex = 0;
     for ( int index = 0; index < visibilityModel_->rowCount(); ++index ) {
-        if ( visibilityModel_->item( index )->data().value<FilteredView::Visibility>() == visibility ) {
+        const auto itemVisibility
+            = visibilityModel_->item( index )->data().value<FilteredView::Visibility>();
+        if ( itemVisibility.testFlag( VisibilityFlags::Marks )
+             == visibility.testFlag( VisibilityFlags::Marks )
+             && itemVisibility.testFlag( VisibilityFlags::Matches )
+                    == visibility.testFlag( VisibilityFlags::Matches ) ) {
             visibilityIndex = index;
             break;
         }
