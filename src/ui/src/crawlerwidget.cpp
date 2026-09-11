@@ -405,7 +405,11 @@ void CrawlerWidget::startNewSearch()
 
         Q_EMIT filteredViewChanged();
         logMainView_->useNewFiltering( logFilteredData_.get() );
-        changeFilteredViewVisibility( visibilityBox_->currentIndex() );
+        {
+            const QSignalBlocker blocker( visibilityBox_ );
+            visibilityBox_->setCurrentIndex( 0 );
+        }
+        changeFilteredViewVisibility( 0 );
 
         applyConfiguration();
     }
@@ -1386,7 +1390,20 @@ void CrawlerWidget::changeFilteredView( int tabIndex )
     Q_EMIT filteredViewChanged();
 
     logMainView_->useNewFiltering( logFilteredData_.get() );
-    changeFilteredViewVisibility( visibilityBox_->currentIndex() );
+
+    const auto visibility = filteredView_->visibility();
+    int visibilityIndex = 0;
+    for ( int index = 0; index < visibilityModel_->rowCount(); ++index ) {
+        if ( visibilityModel_->item( index )->data().value<FilteredView::Visibility>() == visibility ) {
+            visibilityIndex = index;
+            break;
+        }
+    }
+    {
+        const QSignalBlocker blocker( visibilityBox_ );
+        visibilityBox_->setCurrentIndex( visibilityIndex );
+    }
+    changeFilteredViewVisibility( visibilityIndex );
     updateDisplayedMarks();
 }
 
