@@ -1385,6 +1385,8 @@ void CrawlerWidget::changeFilteredView( int tabIndex )
     filteredView_ = tabFilteredView;
     logFilteredData_ = filteredViewsData_.at( tabFilteredView );
 
+    filteredView_->setQuickHighlighters( colorLabelsManager_.colorLabels() );
+
     restoreFilteredViewSearchContext( tabFilteredView );
 
     Q_EMIT filteredViewChanged();
@@ -1913,7 +1915,12 @@ void CrawlerWidget::updateColorLabels(
     const ColorLabelsManager::QuickHighlightersCollection& labels )
 {
     logMainView_->setQuickHighlighters( labels );
-    filteredView_->setQuickHighlighters( labels );
+    for ( auto i = 0; i < tabbedFilteredView_->count(); ++i ) {
+        auto* fv = qobject_cast<FilteredView*>( tabbedFilteredView_->widget( i ) );
+        if ( fv ) {
+            fv->setQuickHighlighters( labels );
+        }
+    }
 }
 
 //
