@@ -390,6 +390,11 @@ void CrawlerWidget::startNewSearch()
         filteredView_ = new FilteredView( logFilteredData_.get(), quickFindPattern_.get() );
         filteredViewsData_[ filteredView_ ] = logFilteredData_;
 
+        // Propagate the currently configured color labels (e.g. purple "charge_enable")
+        // to the new tab so its search results render the highlights immediately,
+        // instead of only after switching tabs back and forth.
+        filteredView_->setQuickHighlighters( colorLabelsManager_.colorLabels() );
+
         connectAllFilteredViewSlots( filteredView_ );
 
         // Avoid changeFilteredView()/restore while the new tab has no context yet.
@@ -1385,6 +1390,8 @@ void CrawlerWidget::changeFilteredView( int tabIndex )
     filteredView_ = tabFilteredView;
     logFilteredData_ = filteredViewsData_.at( tabFilteredView );
 
+    filteredView_->setQuickHighlighters( colorLabelsManager_.colorLabels() );
+
     restoreFilteredViewSearchContext( tabFilteredView );
 
     Q_EMIT filteredViewChanged();
@@ -1913,7 +1920,12 @@ void CrawlerWidget::updateColorLabels(
     const ColorLabelsManager::QuickHighlightersCollection& labels )
 {
     logMainView_->setQuickHighlighters( labels );
-    filteredView_->setQuickHighlighters( labels );
+    for ( auto i = 0; i < tabbedFilteredView_->count(); ++i ) {
+        auto* fv = qobject_cast<FilteredView*>( tabbedFilteredView_->widget( i ) );
+        if ( fv ) {
+            fv->setQuickHighlighters( labels );
+        }
+    }
 }
 
 //
