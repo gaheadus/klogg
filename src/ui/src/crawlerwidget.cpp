@@ -384,7 +384,14 @@ void CrawlerWidget::startNewSearch()
 
         // Keep the previous tab's last-searched context. Do not save the new
         // query against the old view — the search box already contains it.
-        logFilteredData_->interruptSearch();
+        // Interrupt ALL background searches here too, otherwise a search
+        // still running in some other tab will keep holding the shared
+        // LogData file_mutex_ and freeze the new tab's UI as soon as the
+        // user clicks anywhere in it.
+        for ( const auto& [ view, filteredData ] : filteredViewsData_ ) {
+            Q_UNUSED( view );
+            filteredData->interruptSearch();
+        }
         logFilteredData_ = logData_->getNewFilteredData();
 
         filteredView_ = new FilteredView( logFilteredData_.get(), quickFindPattern_.get() );
@@ -1385,7 +1392,19 @@ void CrawlerWidget::changeFilteredView( int tabIndex )
         return;
     }
 
-    logFilteredData_->interruptSearch();
+    // Interrupt ALL background searches (not just the current tab's) before
+    // switching to the new tab. Each tab's search worker reads file chunks
+    // while holding the shared LogData file_mutex_; if any inactive tab's
+    // worker is mid-read when the user interacts with the new tab, the main
+    // thread blocks on that mutex (mouse double-click, paint, right-click
+    // menu etc. all read lines from the file). Pausing every worker up-front
+    // lets them finish their current chunk and exit the read loop promptly,
+    // so the new tab stays responsive. Searches in inactive tabs will be
+    // restarted on demand when the user switches back to them.
+    for ( const auto& [ view, filteredData ] : filteredViewsData_ ) {
+        Q_UNUSED( view );
+        filteredData->interruptSearch();
+    }
 
     filteredView_ = tabFilteredView;
     logFilteredData_ = filteredViewsData_.at( tabFilteredView );
