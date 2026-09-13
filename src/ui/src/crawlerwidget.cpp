@@ -817,6 +817,18 @@ void CrawlerWidget::fileChangedHandler( MonitoredFileStatus status )
             nbMatches_ = 0_lcount;
         }
     }
+    else if ( status == MonitoredFileStatus::DataAdded ) {
+        // File has new data appended, need to update all search results
+        if ( !searchInfoLine_->text().isEmpty() ) {
+            // Update search for all tabs to capture newly added matching lines
+            for ( const auto& [ view, filteredData ] : filteredViewsData_ ) {
+                Q_UNUSED( view );
+                const auto nbTotalLines = filteredData->getNbTotalLines();
+                filteredData->updateSearch( LineNumber( nbTotalLines.get() - 1 ),
+                                           LineNumber( nbTotalLines.get() ) );
+            }
+        }
+    }
 }
 
 // Returns a pointer to the window in which the search should be done
