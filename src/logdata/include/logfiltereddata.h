@@ -84,6 +84,10 @@ class LogFilteredData : public AbstractLogData {
     // Add to the existing search, starting at the line when the search was
     // last stopped. Used when the file on disk has been added too.
     void updateSearch( LineNumber startLine, LineNumber endLine );
+
+    // Search newly added content from the last processed line to the end of file.
+    // Unlike updateSearch, this preserves existing matches and searches all new lines.
+    void appendSearch();
     // Interrupt the running search if one is in progress.
     // Nothing is done if no search is in progress.
     void interruptSearch();
