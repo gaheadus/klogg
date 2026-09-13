@@ -346,8 +346,24 @@ void Highlighter::retrieveFromStorage( QSettings& settings )
     useRegex_ = settings.value( "use_regex", true ).toBool();
     variateColors_ = settings.value( "variate_colors", false ).toBool();
     colorVariance_ = settings.value( "color_variance", 15 ).toInt();
-    color_.foreColor = QColor( settings.value( "fore_colour" ).toString() );
-    color_.backColor = QColor( settings.value( "back_colour" ).toString() );
+    color_.foreColor = QColor( settings.value( "fore_colour", "#ff000000" ).toString() );
+    color_.backColor = QColor( settings.value( "back_colour", "#ffffffff" ).toString() );
+    
+    // Workaround for Qt 6.5+ ARGB string parsing issue
+    if ( !color_.foreColor.isValid() ) {
+        const auto foreStr = settings.value( "fore_colour", "#ff000000" ).toString();
+        color_.foreColor = QColor( foreStr.mid( 1, 2 ).toInt( nullptr, 16 ),
+                                    foreStr.mid( 3, 2 ).toInt( nullptr, 16 ),
+                                    foreStr.mid( 5, 2 ).toInt( nullptr, 16 ),
+                                    foreStr.mid( 7, 2 ).toInt( nullptr, 16 ) );
+    }
+    if ( !color_.backColor.isValid() ) {
+        const auto backStr = settings.value( "back_colour", "#ffffffff" ).toString();
+        color_.backColor = QColor( backStr.mid( 1, 2 ).toInt( nullptr, 16 ),
+                                    backStr.mid( 3, 2 ).toInt( nullptr, 16 ),
+                                    backStr.mid( 5, 2 ).toInt( nullptr, 16 ),
+                                    backStr.mid( 7, 2 ).toInt( nullptr, 16 ) );
+    }
 }
 
 void HighlighterSet::saveToStorage( QSettings& settings ) const
@@ -571,10 +587,27 @@ void HighlighterSetCollection::retrieveFromStorage( QSettings& settings )
             for ( int i = 0; i < size; ++i ) {
                 settings.setArrayIndex( i );
                 QuickHighlighter quickHighlighter;
-                quickHighlighter.color.foreColor
-                    = QColor( settings.value( "fore_colour" ).toString() );
-                quickHighlighter.color.backColor
-                    = QColor( settings.value( "back_colour" ).toString() );
+                
+                auto foreStr = settings.value( "fore_colour", "#ff000000" ).toString();
+                auto backStr = settings.value( "back_colour", "#ffffffff" ).toString();
+                
+                quickHighlighter.color.foreColor = QColor( foreStr );
+                quickHighlighter.color.backColor = QColor( backStr );
+                
+                // Workaround for Qt 6.5+ ARGB string parsing issue
+                if ( !quickHighlighter.color.foreColor.isValid() ) {
+                    quickHighlighter.color.foreColor = QColor( foreStr.mid( 1, 2 ).toInt( nullptr, 16 ),
+                                                              foreStr.mid( 3, 2 ).toInt( nullptr, 16 ),
+                                                              foreStr.mid( 5, 2 ).toInt( nullptr, 16 ),
+                                                              foreStr.mid( 7, 2 ).toInt( nullptr, 16 ) );
+                }
+                if ( !quickHighlighter.color.backColor.isValid() ) {
+                    quickHighlighter.color.backColor = QColor( backStr.mid( 1, 2 ).toInt( nullptr, 16 ),
+                                                              backStr.mid( 3, 2 ).toInt( nullptr, 16 ),
+                                                              backStr.mid( 5, 2 ).toInt( nullptr, 16 ),
+                                                              backStr.mid( 7, 2 ).toInt( nullptr, 16 ) );
+                }
+                
                 quickHighlighter.useInCycle = settings.value( "cycle", true ).toBool();
 
                 quickHighlighter.name

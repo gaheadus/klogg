@@ -54,6 +54,61 @@ namespace {
 std::once_flag fontInitFlag;
 static const Configuration DefaultConfiguration = {};
 
+// Helper function to parse ARGB color strings reliably across Qt versions
+QColor parseColorFromArgbString( const QString& colorString )
+{
+    QColor color;
+    if ( colorString.isEmpty() ) {
+        return color;
+    }
+    
+    QString str = colorString.trimmed();
+    if ( str.startsWith( '#' ) ) {
+        str = str.mid( 1 );
+    }
+    
+    // Handle 8-digit ARGB format (#AARRGGBB)
+    if ( str.length() == 8 ) {
+        bool ok1, ok2, ok3, ok4;
+        int a = str.mid( 0, 2 ).toInt( &ok1, 16 );
+        int r = str.mid( 2, 2 ).toInt( &ok2, 16 );
+        int g = str.mid( 4, 2 ).toInt( &ok3, 16 );
+        int b = str.mid( 6, 2 ).toInt( &ok4, 16 );
+        
+        if ( ok1 && ok2 && ok3 && ok4 ) {
+            color = QColor( r, g, b, a );
+        }
+    }
+    // Handle 6-digit RGB format (#RRGGBB)
+    else if ( str.length() == 6 ) {
+        bool ok1, ok2, ok3;
+        int r = str.mid( 0, 2 ).toInt( &ok1, 16 );
+        int g = str.mid( 2, 2 ).toInt( &ok2, 16 );
+        int b = str.mid( 4, 2 ).toInt( &ok3, 16 );
+        
+        if ( ok1 && ok2 && ok3 ) {
+            color = QColor( r, g, b );
+        }
+    }
+    // Handle 3-digit RGB format (#RGB)
+    else if ( str.length() == 3 ) {
+        bool ok1, ok2, ok3;
+        int r = str.mid( 0, 1 ).toInt( &ok1, 16 ) * 17;
+        int g = str.mid( 1, 1 ).toInt( &ok2, 16 ) * 17;
+        int b = str.mid( 2, 1 ).toInt( &ok3, 16 ) * 17;
+        
+        if ( ok1 && ok2 && ok3 ) {
+            color = QColor( r, g, b );
+        }
+    }
+    // Fallback to standard parsing
+    else {
+        color.setNamedColor( colorString );
+    }
+    
+    return color;
+}
+
 } // namespace
 
 Configuration::Configuration()
@@ -141,27 +196,15 @@ void Configuration::retrieveFromStorage( QSettings& settings )
                       DefaultConfiguration.enableMainSearchHighlightVariance_ )
               .toBool();
 
-    mainSearchBackColor_
-#if QT_VERSION <= QT_VERSION_CHECK( 6, 4, 0 )
-        .setNamedColor(
-#else
-        .fromString(
-#endif
-            settings
-                .value( "regexpType.mainBackColor",
+    mainSearchBackColor_ = parseColorFromArgbString(
+        settings.value( "regexpType.mainBackColor",
                         DefaultConfiguration.mainSearchBackColor_.name( QColor::HexArgb ) )
-                .toString() );
+            .toString() );
 
-    qfBackColor_
-#if QT_VERSION <= QT_VERSION_CHECK( 6, 4, 0 )
-        .setNamedColor(
-#else
-        .fromString(
-#endif
-            settings
-                .value( "regexpType.quickfindBackColor",
+    qfBackColor_ = parseColorFromArgbString(
+        settings.value( "regexpType.quickfindBackColor",
                         DefaultConfiguration.qfBackColor_.name( QColor::HexArgb ) )
-                .toString() );
+            .toString() );
 
     qfIgnoreCase_
         = settings.value( "quickfind.ignore_case", DefaultConfiguration.qfIgnoreCase_ ).toBool();
