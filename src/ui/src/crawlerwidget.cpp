@@ -1433,9 +1433,10 @@ void CrawlerWidget::changeFilteredView( int tabIndex )
 
     // If auto-refresh is enabled, update the search for the newly selected tab.
     // This ensures the tab shows the latest search results when switched to.
+    // Use the tab's search limits (searchStartLine_ to searchEndLine_) for consistency
+    // with loadingFinishedHandler.
     if ( searchState_.isAutorefreshAllowed() ) {
-        const auto nbTotalLines = logFilteredData_->getNbTotalLines();
-        logFilteredData_->updateSearch( 0_lnum, nbTotalLines );
+        logFilteredData_->updateSearch( searchStartLine_, searchEndLine_ );
     }
 
     filteredView_->setQuickHighlighters( colorLabelsManager_.colorLabels() );
