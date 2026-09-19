@@ -31,6 +31,8 @@ public:
 
   protected:
     void contextMenuEvent(QContextMenuEvent *event) override;
+    void paintEvent( QPaintEvent* paintEvent ) override;
+    QSize sizeHint() const override;
 
   private:
     QString path_;
