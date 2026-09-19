@@ -183,20 +183,6 @@ private:
     LineNumber initialPosition_;
 };
 
-// Operation that searches newly added content while preserving existing matches
-class AppendSearchOperation : public SearchOperation {
-    Q_OBJECT
-public:
-    AppendSearchOperation( const LogData& sourceLogData, AtomicFlag& interruptRequested,
-                          const RegularExpressionPattern& regExp, LineNumber startLine,
-                          LineNumber endLine )
-        : SearchOperation( sourceLogData, interruptRequested, regExp, startLine, endLine )
-    {
-    }
-
-    void run( SearchData& result ) override;
-};
-
 class LogFilteredDataWorker : public QObject {
     Q_OBJECT
 
@@ -216,10 +202,6 @@ public:
     // in the source file (line number)
     void updateSearch( const RegularExpressionPattern& regExp, LineNumber startLine,
                        LineNumber endLine, LineNumber position );
-
-    // Search newly added content from startLine to endLine, preserving existing matches
-    void appendSearch( const RegularExpressionPattern& regExp, LineNumber startLine,
-                       LineNumber endLine );
 
     // Interrupts the search if one is in progress
     void interrupt();

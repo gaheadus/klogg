@@ -242,28 +242,6 @@ void LogFilteredDataWorker::updateSearch( const RegularExpressionPattern& regExp
     operationStarted.acquire();
 }
 
-void LogFilteredDataWorker::appendSearch( const RegularExpressionPattern& regExp,
-                                         LineNumber startLine, LineNumber endLine )
-{
-    ScopedLock locker( operationsMutex_ ); // to protect operationRequested_
-    operationsPool_.waitForDone();
-    interruptRequested_.clear();
-
-    LOG_INFO << "Append search requested from " << startLine.get() << " to " << endLine.get();
-
-    QSemaphore operationStarted;
-    operationsPool_.start(
-        createRunnable( [ this, &operationStarted, regExp, startLine, endLine ] {
-            operationStarted.release();
-            ScopedLock operationLock( operationsMutex_ );
-            auto operationRequested = std::make_unique<AppendSearchOperation>(
-                sourceLogData_, interruptRequested_, regExp, startLine, endLine );
-            connectSignalsAndRun( operationRequested.get() );
-        } ) );
-
-    operationStarted.acquire();
-}
-
 void LogFilteredDataWorker::interrupt()
 {
     LOG_INFO << "Search interruption requested";
@@ -548,23 +526,5 @@ void UpdateSearchOperation::run( SearchData& searchData )
             IssueReporter::askUserAndReportIssue( IssueTemplate::Exception, errorString );
         } );
         searchData.clear();
-    }
-}
-
-// Called in the worker thread's context
-// Searches newly added content while preserving existing matches
-void AppendSearchOperation::run( SearchData& searchData )
-{
-    try {
-        // Search from startLine_ to endLine_ without clearing existing matches
-        // The doSearch will only add new matches to newMatches_
-        doSearch( searchData, startLine_ );
-    } catch ( const std::exception& err ) {
-        const auto errorString = QString( "AppendSearchOperation failed: %1" ).arg( err.what() );
-        LOG_ERROR << errorString;
-        dispatchToMainThread( [ errorString ]() {
-            IssueReporter::askUserAndReportIssue( IssueTemplate::Exception, errorString );
-        } );
-        // Don't clear searchData on error - preserve existing results
     }
 }

@@ -142,25 +142,6 @@ void LogFilteredData::updateSearch( LineNumber startLine, LineNumber endLine )
                                 LineNumber( nbLinesProcessed_.get() ) );
 }
 
-void LogFilteredData::appendSearch()
-{
-    LOG_DEBUG << "Entering appendSearch";
-
-    // Search from the last processed line to the end of file
-    const auto startLine = LineNumber( nbLinesProcessed_.get() );
-    const auto endLine = LineNumber( sourceLogData_->getNbLine().get() );
-
-    LOG_INFO << "appendSearch: searching from line " << startLine.get() << " to " << endLine.get();
-
-    if ( startLine >= endLine ) {
-        LOG_INFO << "appendSearch: no new lines to search";
-        return;
-    }
-
-    attachReader();
-    workerThread_.appendSearch( currentRegExp_, startLine, endLine );
-}
-
 void LogFilteredData::interruptSearch()
 {
     LOG_DEBUG << "Entering interruptSearch";

@@ -835,7 +835,9 @@ void CrawlerWidget::fileChangedHandler( MonitoredFileStatus status )
             // Update search for all tabs to capture newly added matching lines
             for ( const auto& [ view, filteredData ] : filteredViewsData_ ) {
                 Q_UNUSED( view );
-                filteredData->appendSearch();
+                const auto nbTotalLines = filteredData->getNbTotalLines();
+                filteredData->updateSearch( LineNumber( nbTotalLines.get() - 1 ),
+                                           LineNumber( nbTotalLines.get() ) );
             }
         }
     }
