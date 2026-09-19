@@ -41,7 +41,14 @@ class CrawlerTabBar : public QTabBar {
 
   protected:
     void mouseReleaseEvent( QMouseEvent* ) override;
+    void mouseMoveEvent( QMouseEvent* event ) override;
 
+  private:
+    void moveTab( int from, int to );
+
+  private:
+    int dragTabIndex_ = -1;
+    int dragTargetIndex_ = -1;
 };
 
 class TabbedCrawlerWidget : public QTabWidget {

@@ -74,6 +74,26 @@ class QStandardItemModel;
 class QCompleter;
 class OverviewWidget;
 
+// Tab bar for search tabs, supports drag-to-reorder and right-click context menu
+// (rename / reset name).
+class SearchTabBar : public QTabBar {
+  Q_OBJECT
+
+  Q_SIGNALS:
+    void showSearchTabContextMenu( int tab, QPoint point );
+
+  protected:
+    void mouseReleaseEvent( QMouseEvent* mouseEvent ) override;
+    void mouseMoveEvent( QMouseEvent* event ) override;
+
+  private:
+    void moveTab( int from, int to );
+
+  private:
+    int dragTabIndex_ = -1;
+    int dragTargetIndex_ = -1;
+};
+
 // Implements the central widget of the application.
 // It includes both windows, the search line, the info
 // lines and various buttons.
@@ -275,6 +295,9 @@ class CrawlerWidget : public QSplitter,
     void closeFilteredView(int tabIndex);
     void filteredViewDestroyed(QObject* view);
 
+    // Show context menu for search tab (rename/reset)
+    void showSearchTabContextMenu( int tab, QPoint globalPoint );
+
   private:
     // State machine holding the state of the search, used to allow/disallow
     // auto-refresh and inform the user via the info line.
@@ -396,6 +419,7 @@ class CrawlerWidget : public QSplitter,
     std::unordered_map<FilteredView*, std::shared_ptr<LogFilteredData>> filteredViewsData_;
     std::unordered_map<FilteredView*, FilteredViewSearchContext> filteredViewsSearchContext_;
     QTabWidget* tabbedFilteredView_;
+    SearchTabBar mySearchTabBar_;
 
     OverviewWidget* overviewWidget_;
 

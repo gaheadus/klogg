@@ -178,6 +178,9 @@ QString TabbedCrawlerWidget::tabPathAt( int index ) const
 
 void CrawlerTabBar::mouseReleaseEvent( QMouseEvent* mouseEvent )
 {
+    dragTabIndex_ = -1;
+    dragTargetIndex_ = -1;
+
     if ( mouseEvent->button() == Qt::RightButton ) {
         int tab = tabAt( mouseEvent->pos() );
         if ( tab != -1 ) {
@@ -187,6 +190,42 @@ void CrawlerTabBar::mouseReleaseEvent( QMouseEvent* mouseEvent )
     }
 
     mouseEvent->ignore();
+}
+
+void CrawlerTabBar::mouseMoveEvent( QMouseEvent* event )
+{
+    const auto buttons = event->buttons();
+    if ( !( buttons & Qt::LeftButton ) ) {
+        QTabBar::mouseMoveEvent( event );
+        return;
+    }
+
+    if ( dragTabIndex_ == -1 ) {
+        const QPoint pos = event->pos();
+        const int hoveredTab = tabAt( pos );
+        if ( hoveredTab != -1 ) {
+            dragTabIndex_ = hoveredTab;
+            setCursor( Qt::SizeAllCursor );
+        }
+    }
+
+    if ( dragTabIndex_ == -1 ) {
+        QTabBar::mouseMoveEvent( event );
+        return;
+    }
+
+    const int targetTab = tabAt( event->pos() );
+    if ( targetTab != -1 && targetTab != dragTabIndex_ ) {
+        dragTargetIndex_ = targetTab;
+        moveTab( dragTabIndex_, dragTargetIndex_ );
+        dragTabIndex_ = dragTargetIndex_;
+        dragTargetIndex_ = -1;
+    }
+}
+
+void CrawlerTabBar::moveTab( int from, int to )
+{
+    QTabBar::moveTab( from, to );
 }
 
 void TabbedCrawlerWidget::showContextMenu( int tab, QPoint globalPoint )

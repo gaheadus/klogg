@@ -52,12 +52,14 @@
 
 #include <QAction>
 #include <QApplication>
+#include <QClipboard>
 #include <QCompleter>
 #include <QInputDialog>
 #include <QJsonDocument>
 #include <QKeySequence>
 #include <QLineEdit>
 #include <QListView>
+#include <QMenu>
 #include <QShortcut>
 #include <QSignalBlocker>
 #include <QStandardItemModel>
@@ -1237,6 +1239,12 @@ void CrawlerWidget::setup()
     tabbedFilteredView_->setDocumentMode( true );
     tabbedFilteredView_->setTabBarAutoHide( true );
 
+    // Use SearchTabBar (supports drag-to-reorder and right-click context menu)
+    tabbedFilteredView_->setTabBar( &mySearchTabBar_ );
+    mySearchTabBar_.setContextMenuPolicy( Qt::CustomContextMenu );
+    connect( &mySearchTabBar_, &SearchTabBar::showSearchTabContextMenu, this,
+             &CrawlerWidget::showSearchTabContextMenu );
+
     // Set tab width with dynamic sizing based on content
     // - min-width: 100px (ensures readability for short search terms)
     // - max-width: 150px (allows ~10-12 ASCII chars, then truncates with ellipsis)
@@ -1475,6 +1483,89 @@ void CrawlerWidget::filteredViewDestroyed( QObject* view )
     filteredViewsData_.erase( filteredView );
     filteredViewsSearchContext_.erase( filteredView );
     updateDisplayedMarks();
+}
+
+void SearchTabBar::mouseReleaseEvent( QMouseEvent* mouseEvent )
+{
+    dragTabIndex_ = -1;
+    dragTargetIndex_ = -1;
+    unsetCursor();
+
+    if ( mouseEvent->button() == Qt::RightButton ) {
+        int tab = tabAt( mouseEvent->pos() );
+        if ( tab != -1 ) {
+            Q_EMIT showSearchTabContextMenu( tab, mapToGlobal( mouseEvent->pos() ) );
+            mouseEvent->accept();
+        }
+    }
+
+    mouseEvent->ignore();
+}
+
+void SearchTabBar::mouseMoveEvent( QMouseEvent* event )
+{
+    const auto buttons = event->buttons();
+    if ( !( buttons & Qt::LeftButton ) ) {
+        QTabBar::mouseMoveEvent( event );
+        return;
+    }
+
+    if ( dragTabIndex_ == -1 ) {
+        const int hoveredTab = tabAt( event->pos() );
+        if ( hoveredTab != -1 ) {
+            dragTabIndex_ = hoveredTab;
+            setCursor( Qt::SizeAllCursor );
+        }
+    }
+
+    if ( dragTabIndex_ == -1 ) {
+        QTabBar::mouseMoveEvent( event );
+        return;
+    }
+
+    const int targetTab = tabAt( event->pos() );
+    if ( targetTab != -1 && targetTab != dragTabIndex_ ) {
+        dragTargetIndex_ = targetTab;
+        moveTab( dragTabIndex_, dragTargetIndex_ );
+        dragTabIndex_ = dragTargetIndex_;
+        dragTargetIndex_ = -1;
+    }
+}
+
+void SearchTabBar::moveTab( int from, int to )
+{
+    QTabBar::moveTab( from, to );
+}
+
+void CrawlerWidget::showSearchTabContextMenu( int tab, QPoint globalPoint )
+{
+    QMenu menu( this );
+    auto renameTab = menu.addAction( tr( "Rename tab" ) );
+    auto resetTabName = menu.addAction( tr( "Reset tab name" ) );
+
+    connect( renameTab, &QAction::triggered, this, [ this, tab ] {
+        bool isNameEntered = false;
+        auto newName = QInputDialog::getText( this, "Rename tab", "Tab name", QLineEdit::Normal,
+                                              tabbedFilteredView_->tabText( tab ), &isNameEntered );
+        if ( isNameEntered ) {
+            tabbedFilteredView_->setTabText( tab, newName );
+        }
+    } );
+
+    connect( resetTabName, &QAction::triggered, this, [ this, tab ] {
+        const auto* fv = qobject_cast<FilteredView*>( tabbedFilteredView_->widget( tab ) );
+        if ( fv ) {
+            auto it = filteredViewsSearchContext_.find( const_cast<FilteredView*>( fv ) );
+            if ( it != filteredViewsSearchContext_.end() ) {
+                const QString& searchText = it->second.searchText;
+                const QString tabTitle
+                    = ( !searchText.isEmpty() ) ? searchText.left( 10 ) : tabbedFilteredView_->tabText( tab );
+                tabbedFilteredView_->setTabText( tab, tabTitle );
+            }
+        }
+    } );
+
+    menu.exec( globalPoint );
 }
 
 void CrawlerWidget::saveSplitterSizes() const
