@@ -1431,6 +1431,16 @@ void CrawlerWidget::changeFilteredView( int tabIndex )
     filteredView_ = tabFilteredView;
     logFilteredData_ = filteredViewsData_.at( tabFilteredView );
 
+    // Batch all the forced refreshes below into a single repaint to avoid
+    // the 6+ individual update() calls that previously fired from
+    // setQuickHighlighters / setSearchLimits / setSearchPattern /
+    // useNewFiltering / updateDisplayedMarks. Each individual call only
+    // invalidates the cache and schedules an update(); Qt coalesces those
+    // but each one still walks the widget tree. Suppressing repaints around
+    // the whole block keeps tab switching snappy on large logs.
+    logMainView_->setUpdatesEnabled( false );
+    filteredView_->setUpdatesEnabled( false );
+
     // If auto-refresh is enabled, update the search for the newly selected tab.
     // This ensures the tab shows the latest search results when switched to.
     // Use the tab's search limits (searchStartLine_ to searchEndLine_) for consistency
@@ -1467,6 +1477,13 @@ void CrawlerWidget::changeFilteredView( int tabIndex )
     }
     changeFilteredViewVisibility( visibilityIndex );
     updateDisplayedMarks();
+
+    // Invalidate caches once and emit a single paint for both views, instead
+    // of letting each setter issue its own update().
+    logMainView_->forceRefresh();
+    filteredView_->forceRefresh();
+    logMainView_->setUpdatesEnabled( true );
+    filteredView_->setUpdatesEnabled( true );
 }
 
 void CrawlerWidget::closeFilteredView( int tabIndex )
