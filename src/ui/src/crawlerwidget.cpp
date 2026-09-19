@@ -348,11 +348,10 @@ void CrawlerWidget::doSetViewContext( const QString& view_context )
     inverseButton_->setChecked( context.inverseRegexp() );
     booleanButton_->setChecked( context.useBooleanCombination() );
 
-    searchRefreshButton_->setChecked( context.autoRefresh() );
-    // Manually call the handler as it is not called when changing the state programmatically
-    searchRefreshChangedHandler( context.autoRefresh() );
-
+    // Auto-refresh is a global preference; session must not override it on restore.
     const auto& config = Configuration::get();
+    setAutoRefreshEnabled( config.isSearchAutoRefreshDefault() );
+
     logMainView_->followSet( context.followFile() && config.anyFileWatchEnabled() );
 
     const auto savedMarks = context.marks();
@@ -674,6 +673,17 @@ void CrawlerWidget::markLinesFromFiltered( const klogg::vector<LineNumber>& line
                     } );
 
     markLinesFromMain( linesInMain );
+}
+
+void CrawlerWidget::setAutoRefreshEnabled( bool enabled )
+{
+    if ( !searchRefreshButton_ ) {
+        return;
+    }
+
+    const QSignalBlocker blocker( searchRefreshButton_ );
+    searchRefreshButton_->setChecked( enabled );
+    searchRefreshChangedHandler( enabled );
 }
 
 void CrawlerWidget::applyConfiguration()
@@ -1145,7 +1155,10 @@ void CrawlerWidget::setup()
     booleanButton_->setContentsMargins( 2, 2, 2, 2 );
 
     searchRefreshButton_ = new QToolButton();
-    searchRefreshButton_->setToolTip( tr( "Auto-refresh" ) );
+    searchRefreshButton_->setToolTip(
+        tr( "Keep search results updated when the file grows. "
+            "Starts from Preferences → Search Options → Auto refresh; "
+            "you can change it for this file during the session." ) );
     searchRefreshButton_->setCheckable( true );
     searchRefreshButton_->setFocusPolicy( Qt::NoFocus );
     searchRefreshButton_->setContentsMargins( 2, 2, 2, 2 );
@@ -1247,15 +1260,14 @@ void CrawlerWidget::setup()
     addWidget( logMainView_ );
     addWidget( bottomWindow );
 
-    // Default search checkboxes
+    // Default search checkboxes from global preferences
     auto& config = Configuration::get();
-    searchRefreshButton_->setChecked( config.isSearchAutoRefreshDefault() );
+    setAutoRefreshEnabled( config.isSearchAutoRefreshDefault() );
     matchCaseButton_->setChecked( !config.isSearchIgnoreCaseDefault() );
     useRegexpButton_->setChecked( config.mainRegexpType() == SearchRegexpType::ExtendedRegexp );
     booleanButton_->setChecked( config.isSearchLogicalCombiningDefault() );
 
-    // Manually call the handler as it is not called when changing the state programmatically
-    searchRefreshChangedHandler( searchRefreshButton_->isChecked() );
+    // Manually call the handlers as they are not called when changing the state programmatically
     useRegexpChangeHandler( useRegexpButton_->isChecked() );
     matchCaseChangedHandler( matchCaseButton_->isChecked() );
     booleanCombiningChangedHandler( booleanButton_->isChecked() );
@@ -1997,14 +2009,14 @@ void CrawlerWidget::SearchState::truncateFile()
 
 void CrawlerWidget::SearchState::changeExpression()
 {
-    if ( state_ == Autorefreshing )
-        state_ = Static;
+    // Changing the pattern must not turn off auto-refresh; only the
+    // Auto-refresh button (setAutorefresh) controls that preference.
 }
 
 void CrawlerWidget::SearchState::stopSearch()
 {
-    if ( state_ == Autorefreshing )
-        state_ = Static;
+    // Stopping the current search must not turn off auto-refresh; only the
+    // Auto-refresh button (setAutorefresh) controls that preference.
 }
 
 void CrawlerWidget::SearchState::startSearch()

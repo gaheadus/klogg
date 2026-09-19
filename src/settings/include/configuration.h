@@ -328,7 +328,8 @@ class Configuration final : public Persistable<Configuration> {
         loggingLevel_ = level;
     }
 
-    // Default settings for new views
+    // Global Auto-refresh preference (all open files; used again on next startup).
+    // Per-view search-box button may temporarily override it during a session.
     bool isSearchAutoRefreshDefault() const
     {
         return searchAutoRefresh_;
@@ -337,6 +338,7 @@ class Configuration final : public Persistable<Configuration> {
     {
         searchAutoRefresh_ = autoRefresh;
     }
+    // Default settings for new views
     bool isSearchIgnoreCaseDefault() const
     {
         return searchIgnoreCase_;
@@ -574,7 +576,7 @@ class Configuration final : public Persistable<Configuration> {
     QString style_;
 
     // Default settings for new views
-    bool searchAutoRefresh_ = false;
+    bool searchAutoRefresh_ = true;
     bool searchIgnoreCase_ = false;
     bool searchLogicalCombining_ = false;
     QList<int> splitterSizes_;

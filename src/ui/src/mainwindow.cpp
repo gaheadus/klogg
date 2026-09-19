@@ -1203,6 +1203,14 @@ void MainWindow::options()
         newWindowAction->setVisible( config.allowMultipleWindows() );
         followAction->setEnabled( config.anyFileWatchEnabled() );
 
+        // Global Auto-refresh: apply immediately to every open file view.
+        const bool autoRefresh = config.isSearchAutoRefreshDefault();
+        for ( int i = 0; i < mainTabWidget_.count(); ++i ) {
+            if ( auto* crawler = qobject_cast<CrawlerWidget*>( mainTabWidget_.widget( i ) ) ) {
+                crawler->setAutoRefreshEnabled( autoRefresh );
+            }
+        }
+
         updateShortcuts();
         updateRecentFileActions();
     } );

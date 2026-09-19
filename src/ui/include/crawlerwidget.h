@@ -128,6 +128,10 @@ class CrawlerWidget : public QSplitter,
     // Instructs the widget to reconfigure itself because Config() has changed.
     void applyConfiguration();
 
+    // Set Auto-refresh from the global preference (or a temporary override).
+    // Takes effect immediately for this file view and all its search tabs.
+    void setAutoRefreshEnabled( bool enabled );
+
   public:
     template <class T>
     struct access_by;
@@ -287,20 +291,20 @@ class CrawlerWidget : public QSplitter,
         SearchState()
         {
             state_ = NoSearch;
-            autoRefreshRequested_ = false;
+            autoRefreshRequested_ = true;
         }
 
         // Reset the state (no search active)
         void resetState();
-        // The user changed auto-refresh request
+        // The user changed auto-refresh request (only way to turn it off)
         void setAutorefresh( bool refresh );
-        // The file has been truncated (stops auto-refresh)
+        // The file has been truncated
         void truncateFile();
-        // The expression has been changed (stops auto-refresh)
+        // The expression has been changed
         void changeExpression();
-        // The search has been stopped (stops auto-refresh)
+        // The search has been stopped (does not turn off auto-refresh)
         void stopSearch();
-        // The search has been started (enable auto-refresh)
+        // The search has been started (enable auto-refresh if requested)
         void startSearch();
 
         // Get the state in order to display the proper message

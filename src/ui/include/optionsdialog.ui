@@ -156,6 +156,9 @@
             </item>
             <item row="2" column="2">
              <widget class="QCheckBox" name="autoRefreshCheckBox">
+              <property name="toolTip">
+               <string>Global setting: keep search results updated when files grow. Applies to all open files immediately, and is restored on next startup. The search-box Auto-refresh button can temporarily override this during a session.</string>
+              </property>
               <property name="text">
                <string>Auto refresh</string>
               </property>
