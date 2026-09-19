@@ -829,6 +829,8 @@ void CrawlerWidget::fileChangedHandler( MonitoredFileStatus status )
             nbMatches_ = 0_lcount;
         }
     }
+    // Note: DataAdded is handled by loadingFinishedHandler via auto-refresh
+    // Do not add duplicate handling here to avoid double-trigger issue
 }
 
 // Returns a pointer to the window in which the search should be done
@@ -1428,6 +1430,13 @@ void CrawlerWidget::changeFilteredView( int tabIndex )
 
     filteredView_ = tabFilteredView;
     logFilteredData_ = filteredViewsData_.at( tabFilteredView );
+
+    // If auto-refresh is enabled, update the search for the newly selected tab.
+    // This ensures the tab shows the latest search results when switched to.
+    if ( searchState_.isAutorefreshAllowed() ) {
+        const auto nbTotalLines = logFilteredData_->getNbTotalLines();
+        logFilteredData_->updateSearch( 0_lnum, nbTotalLines );
+    }
 
     filteredView_->setQuickHighlighters( colorLabelsManager_.colorLabels() );
 
