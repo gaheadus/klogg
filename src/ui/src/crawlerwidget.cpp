@@ -381,7 +381,7 @@ void CrawlerWidget::startNewSearch()
     // Capture before keep-results / history updates can change the combo state.
     const QString searchText = searchLineEdit_->lineEdit()->text();
 
-    if ( keepSearchResultsButton_->isChecked() ) {
+    if ( keepSearchResultsButton_->isChecked() || ( filteredView_ == nullptr ) ) {
         keepSearchResultsButton_->setChecked( false );
 
         // Keep the previous tab's last-searched context. Do not save the new
@@ -1483,6 +1483,11 @@ void CrawlerWidget::changeFilteredView( int tabIndex )
     logMainView_->setUpdatesEnabled( false );
     filteredView_->setUpdatesEnabled( false );
 
+    // IMPORTANT: Restore the tab's search context BEFORE updateSearch so that
+    // the correct search range (this tab's stored range) is used, not the
+    // previous tab's range that happens to be in the member variables.
+    restoreFilteredViewSearchContext( tabFilteredView );
+
     // If auto-refresh is enabled, update the search for the newly selected tab.
     // This ensures the tab shows the latest search results when switched to.
     // Use the tab's search limits (searchStartLine_ to searchEndLine_) for consistency
@@ -1492,8 +1497,6 @@ void CrawlerWidget::changeFilteredView( int tabIndex )
     }
 
     filteredView_->setQuickHighlighters( colorLabelsManager_.colorLabels() );
-
-    restoreFilteredViewSearchContext( tabFilteredView );
 
     Q_EMIT filteredViewChanged();
 
@@ -1531,14 +1534,35 @@ void CrawlerWidget::changeFilteredView( int tabIndex )
 void CrawlerWidget::closeFilteredView( int tabIndex )
 {
     auto* tabFilteredView = tabbedFilteredView_->widget( tabIndex );
+    if ( tabFilteredView == nullptr ) {
+        return;
+    }
+
+    const bool isClosingCurrentView = ( tabFilteredView == filteredView_ );
+
     connect( tabFilteredView, &QObject::destroyed, this, &CrawlerWidget::filteredViewDestroyed );
+    tabbedFilteredView_->removeTab( tabIndex );
     tabFilteredView->deleteLater();
-    // Note: nextTabNumber is not decremented to maintain unique tab numbers
+
+    if ( isClosingCurrentView ) {
+        const int remainingTabs = tabbedFilteredView_->count();
+        if ( remainingTabs > 0 ) {
+            const int newIndex = ( tabIndex >= remainingTabs ) ? ( remainingTabs - 1 ) : tabIndex;
+            changeFilteredView( newIndex );
+        }
+        else {
+            filteredView_ = nullptr;
+            logFilteredData_ = nullptr;
+        }
+    }
 }
 
 void CrawlerWidget::filteredViewDestroyed( QObject* view )
 {
     auto* filteredView = qobject_cast<FilteredView*>( view );
+    if ( filteredView == nullptr ) {
+        return;
+    }
     filteredViewsData_.erase( filteredView );
     filteredViewsSearchContext_.erase( filteredView );
     updateDisplayedMarks();
