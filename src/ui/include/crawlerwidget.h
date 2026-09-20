@@ -67,6 +67,8 @@
 #include "signalmux.h"
 #include "viewinterface.h"
 
+class FilteredViewTabWidget;
+
 class InfoLine;
 class QuickFindPattern;
 class SavedSearches;
@@ -418,7 +420,7 @@ class CrawlerWidget : public QSplitter,
     FilteredView* filteredView_;
     std::unordered_map<FilteredView*, std::shared_ptr<LogFilteredData>> filteredViewsData_;
     std::unordered_map<FilteredView*, FilteredViewSearchContext> filteredViewsSearchContext_;
-    QTabWidget* tabbedFilteredView_;
+    FilteredViewTabWidget* tabbedFilteredView_;
     SearchTabBar mySearchTabBar_;
 
     OverviewWidget* overviewWidget_;

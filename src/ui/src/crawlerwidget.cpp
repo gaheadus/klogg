@@ -79,6 +79,7 @@
 #include "quickfindpattern.h"
 #include "savedsearches.h"
 #include "shortcuts.h"
+#include "tabbedcrawlerwidget.h"
 
 static constexpr char AnsiColorSequenceRegex[] = "\\x1B\\[([0-9]{1,4}((;|:)[0-9]{1,3})*)?[mK]";
 
@@ -1225,7 +1226,7 @@ void CrawlerWidget::setup()
     searchLineLayout->addWidget( searchInfoLine_ );
 
     // Construct the bottom window
-    tabbedFilteredView_ = new QTabWidget;
+    tabbedFilteredView_ = new FilteredViewTabWidget;
     tabbedFilteredView_->setTabsClosable( true );
     tabbedFilteredView_->addTab( filteredView_, QString::number( nextTabNumber_++ ) );
     tabbedFilteredView_->setDocumentMode( true );

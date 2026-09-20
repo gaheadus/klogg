@@ -28,6 +28,16 @@
 
 #include "loadingstatus.h"
 
+// Lightweight QTabWidget subclass that exposes setTabBar() publicly. Qt5 marks
+// setTabBar() as protected, so a non-derived caller (e.g. CrawlerWidget) cannot
+// install a custom QTabBar. This subclass re-exports the protected method via
+// `using`, which is the idiomatic way to widen access in C++.
+class FilteredViewTabWidget : public QTabWidget {
+    Q_OBJECT
+  public:
+    using QTabWidget::setTabBar;
+};
+
 // This class represents glogg's main widget, a tabbed
 // group of CrawlerWidgets.
 // This is a very slightly customised QTabWidget, with
