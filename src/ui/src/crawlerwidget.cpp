@@ -680,7 +680,7 @@ void CrawlerWidget::markLinesFromFiltered( const klogg::vector<LineNumber>& line
 
 void CrawlerWidget::setAutoRefreshEnabled( bool enabled )
 {
-    if ( !searchRefreshButton_ ) {
+    if ( !searchRefreshButton_ || !logFilteredData_ ) {
         return;
     }
 
@@ -897,6 +897,9 @@ void CrawlerWidget::searchBackward()
 void CrawlerWidget::resetStateOnSearchPatternChanges()
 {
     // We suspend auto-refresh
+    if ( !logFilteredData_ ) {
+        return;
+    }
 
     searchState_.changeExpression();
     printSearchInfoMessage( logFilteredData_->getNbMatches() );
@@ -904,6 +907,10 @@ void CrawlerWidget::resetStateOnSearchPatternChanges()
 
 void CrawlerWidget::searchRefreshChangedHandler( bool isRefreshing )
 {
+    if ( !logFilteredData_ ) {
+        return;
+    }
+
     searchState_.setAutorefresh( isRefreshing );
     printSearchInfoMessage( logFilteredData_->getNbMatches() );
 }
