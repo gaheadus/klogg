@@ -1262,15 +1262,22 @@ void CrawlerWidget::setup()
     // Construct the bottom window
     tabbedFilteredView_ = new FilteredViewTabWidget;
     tabbedFilteredView_->setTabsClosable( true );
-    tabbedFilteredView_->addTab( filteredView_, QString::number( nextTabNumber_++ ) );
-    tabbedFilteredView_->setDocumentMode( true );
-    tabbedFilteredView_->setTabBarAutoHide( true );
 
-    // Use SearchTabBar (supports drag-to-reorder and right-click context menu)
+    // Use SearchTabBar (supports drag-to-reorder and right-click context menu).
+    // IMPORTANT: setTabBar() must be called BEFORE addTab(). If called after,
+    // QTabWidget has already created its default tab bar and the replacement
+    // silently fails (without any error/warning). This caused the search result
+    // tabs to render with the default tab bar (no stylesheet, wrong appearance,
+    // no context menu), making multiple tabs appear to stack/overlap visually.
     tabbedFilteredView_->setTabBar( &mySearchTabBar_ );
     mySearchTabBar_.setContextMenuPolicy( Qt::CustomContextMenu );
     connect( &mySearchTabBar_, &SearchTabBar::showSearchTabContextMenu, this,
              &CrawlerWidget::showSearchTabContextMenu );
+
+    // Now that the custom tab bar is installed, add the first tab and configure.
+    tabbedFilteredView_->addTab( filteredView_, QString::number( nextTabNumber_++ ) );
+    tabbedFilteredView_->setDocumentMode( true );
+    tabbedFilteredView_->setTabBarAutoHide( true );
 
     // Set tab width with dynamic sizing based on content
     // - min-width: 100px (ensures readability for short search terms)
@@ -1594,6 +1601,7 @@ void CrawlerWidget::showSearchTabContextMenu( int tab, QPoint globalPoint )
     QMenu menu( this );
     auto renameTab = menu.addAction( tr( "Rename tab" ) );
     auto resetTabName = menu.addAction( tr( "Reset tab name" ) );
+    auto closeTab = menu.addAction( tr( "Close tab" ) );
 
     connect( renameTab, &QAction::triggered, this, [ this, tab ] {
         bool isNameEntered = false;
@@ -1615,6 +1623,10 @@ void CrawlerWidget::showSearchTabContextMenu( int tab, QPoint globalPoint )
                 tabbedFilteredView_->setTabText( tab, tabTitle );
             }
         }
+    } );
+
+    connect( closeTab, &QAction::triggered, this, [ this, tab ] {
+        closeFilteredView( tab );
     } );
 
     menu.exec( globalPoint );
