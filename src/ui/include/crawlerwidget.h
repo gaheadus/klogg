@@ -371,7 +371,8 @@ class CrawlerWidget : public QSplitter,
     // Private functions
     void setup();
     void setShortcuts();
-    void replaceCurrentSearch( const QString& searchText );
+    void replaceCurrentSearch( const QString& searchText,
+                               OptionalLineNumber endLine = std::nullopt );
     void updateSearchCombo();
     AbstractLogView* activeView() const;
     void printSearchInfoMessage( LinesCount nbMatches = 0_lcount );

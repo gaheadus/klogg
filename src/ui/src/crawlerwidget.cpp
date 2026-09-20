@@ -783,18 +783,42 @@ void CrawlerWidget::loadingFinishedHandler( LoadingStatus status )
 
     // See if we need to auto-refresh the search
     if ( searchState_.isAutorefreshAllowed() ) {
-        searchEndLine_ = LineNumber( logData_->getNbLine().get() );
+        // IMPORTANT: do not overwrite searchStartLine_/searchEndLine_ here.
+        // Those members hold the user's current search range (which may be a
+        // sub-range like [100, 5000]). Previously this handler unconditionally
+        // forced searchEndLine_ to nbLines() and called clearSearchLimits()
+        // below, which silently erased the user's custom range on every file
+        // append and even on the very first load.
+        //
+        // Instead, only extend the actual search end-line used for the worker
+        // so newly appended rows are still covered. Truncation is handled
+        // separately by passing the total line count as an explicit override.
+        const auto totalLines = LineNumber( logData_->getNbLine().get() );
+
         if ( searchState_.isFileTruncated() )
-            // We need to restart the search
-            replaceCurrentSearch( searchLineEdit_->currentText() );
-        else
-            logFilteredData_->updateSearch( searchStartLine_, searchEndLine_ );
+            // Truncation invalidates prior line numbers — search the whole
+            // file by overriding the end-line. searchStartLine_/searchEndLine_
+            // remain unchanged so the user's preference is preserved.
+            replaceCurrentSearch( searchLineEdit_->currentText(),
+                                  OptionalLineNumber{ totalLines } );
+        else {
+            const auto searchEndForRefresh
+                = ( totalLines > searchEndLine_ ) ? totalLines : searchEndLine_;
+            logFilteredData_->updateSearch( searchStartLine_, searchEndForRefresh );
+        }
     }
 
     // Set the encoding for the views
     updateEncoding();
 
-    clearSearchLimits();
+    // Only clear search limits on the very first load, when the member
+    // variables still hold uninitialised values (searchStartLine_ is 0_lnum
+    // and searchEndLine_ is 0_lnum rather than the file end). On subsequent
+    // loads triggered by file append, the members already hold whatever range
+    // the user has set — wiping them here would silently break that range.
+    if ( !firstLoadDone_ ) {
+        clearSearchLimits();
+    }
 
     // Also change the data available icon
     if ( firstLoadDone_ ) {
@@ -1023,6 +1047,16 @@ void CrawlerWidget::setSearchLimits( LineNumber startLine, LineNumber endLine )
 
     logMainView_->setSearchLimits( startLine, endLine );
     filteredView_->setSearchLimits( startLine, endLine );
+
+    // Persist the new range into the current tab's context so that switching
+    // away and back via restoreFilteredViewSearchContext() does not silently
+    // roll back to a stale range captured at the last replaceCurrentSearch().
+    // Without this, the "Set search start/end" right-click actions would
+    // only update the live members and be lost on the next tab change.
+    if ( filteredView_ != nullptr ) {
+        saveFilteredViewSearchContext(
+            filteredView_, searchLineEdit_->lineEdit()->text() );
+    }
 }
 
 void CrawlerWidget::clearSearchLimits()
@@ -1880,7 +1914,8 @@ void CrawlerWidget::restoreFilteredViewSearchContext( FilteredView* view )
     }
 }
 
-void CrawlerWidget::replaceCurrentSearch( const QString& searchText )
+void CrawlerWidget::replaceCurrentSearch( const QString& searchText,
+                                          OptionalLineNumber endLine )
 {
     LOG_INFO << "replacing current search with " << searchText;
     // Interrupt the search if it's ongoing
@@ -1926,8 +1961,15 @@ void CrawlerWidget::replaceCurrentSearch( const QString& searchText )
             stopButton_->show();
             clearButton_->hide();
             searchButton_->hide();
-            // Start a new asynchronous search
-            logFilteredData_->runSearch( regexpPattern, searchStartLine_, searchEndLine_ );
+            // Start a new asynchronous search. When an explicit endLine is
+            // supplied (e.g. auto-refresh after a file truncation), honour
+            // it so the new search covers the whole file even if the user
+            // has pinned a tighter range. Otherwise respect the user's
+            // current range stored in searchEndLine_.
+            const auto effectiveEndLine
+                = endLine.value_or( searchEndLine_ );
+            logFilteredData_->runSearch( regexpPattern, searchStartLine_,
+                                         effectiveEndLine );
             // Accept auto-refresh of the search
             searchState_.startSearch();
             searchInfoLine_->hide();
