@@ -32,10 +32,21 @@ public:
   protected:
     void contextMenuEvent(QContextMenuEvent *event) override;
     void paintEvent( QPaintEvent* paintEvent ) override;
+    void resizeEvent( QResizeEvent* event ) override;
     QSize sizeHint() const override;
 
   private:
+    void updateDisplayText();
+
+    QString ellipsizedDisplay() const;
+
     QString path_;
+    // Rendered (possibly ellipsized) form of path_. Kept in sync with
+    // path_ in setPath()/resizeEvent() so the QLabel's internal text (used
+    // by "Select all", "Copy" with a selection, accessibility, etc.) always
+    // reflects the visible string while path_ remains the unsanitized
+    // original.
+    QString displayText_;
 };
 
 

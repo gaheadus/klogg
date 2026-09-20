@@ -23,8 +23,12 @@
 #include <QApplication>
 #include <QClipboard>
 #include <QContextMenuEvent>
+#include <QFileInfo>
+#include <QFontMetrics>
 #include <QMenu>
 #include <QPainter>
+#include <QResizeEvent>
+#include <QString>
 
 #include "containers.h"
 #include "openfilehelper.h"
@@ -33,15 +37,101 @@
 void PathLine::setPath( const QString& path )
 {
     path_ = path;
-    update();
+    // The user requirement is explicit: path_ must never be modified, and
+    // the file name/path stored in klogg must remain intact. We only
+    // compute a separate ellipsized string used for display. setText() is
+    // called here (NOT inside paintEvent) so the QLabel's internal text
+    // matches what is visually rendered — this keeps "Select all" and
+    // text-selection-based "Copy" functioning as users expect, while
+    // path_ stays untouched.
+    updateDisplayText();
+}
+
+void PathLine::resizeEvent( QResizeEvent* event )
+{
+    QLabel::resizeEvent( event );
+    // Width changed → recompute the ellipsized display string so it fits.
+    updateDisplayText();
+}
+
+void PathLine::updateDisplayText()
+{
+    const QString next = ellipsizedDisplay();
+    if ( next == displayText_ ) {
+        return;
+    }
+    displayText_ = next;
+    setText( displayText_ );
 }
 
 QSize PathLine::sizeHint() const
 {
+    // Don't use path_'s full width — doing so would let a long filename force
+    // the toolbar to grow. Qt will happily clip our paint output instead.
+    return QLabel::sizeHint();
+}
+
+QString PathLine::ellipsizedDisplay() const
+{
     if ( path_.isEmpty() ) {
-        return QLabel::sizeHint();
+        return QString();
     }
-    return QSize( fontMetrics().horizontalAdvance( path_ ), QLabel::sizeHint().height() );
+
+    const QFontMetrics fm = fontMetrics();
+    const int availableWidth = width();
+    if ( availableWidth <= 0 ) {
+        return path_;
+    }
+
+    const int fullWidth = fm.horizontalAdvance( path_ );
+    if ( fullWidth <= availableWidth ) {
+        return path_;
+    }
+
+    // Need to ellipsize. Per requirement, when path+filename is too long,
+    // prioritize showing the FILENAME on the right and drop characters from
+    // the LEFT side of the path prefix. We never modify path_ itself.
+    const QString fileName = QFileInfo( path_ ).fileName();
+    const QString ellipsis = QStringLiteral( "..." );
+    const int ellipsisWidth = fm.horizontalAdvance( ellipsis );
+
+    // Helper: progressively remove characters from the beginning of `base`
+    // (keeping the full suffix) until the resulting text fits `targetWidth`.
+    auto fitSuffixWidth = [&]( const QString& base, int targetWidth ) -> QString {
+        if ( fm.horizontalAdvance( base ) <= targetWidth ) {
+            return base;
+        }
+        // Strip one character from the left at a time; this preserves the
+        // rightmost (filename / path tail) portion intact.
+        int drop = 0;
+        while ( drop < base.size()
+                && fm.horizontalAdvance( ellipsis + base.mid( drop + 1 ) )
+                       > targetWidth ) {
+            ++drop;
+        }
+        return ellipsis + base.mid( drop + 1 );
+    };
+
+    if ( !fileName.isEmpty() && fileName != path_ ) {
+        const int fileNameWidth = fm.horizontalAdvance( fileName );
+        if ( fileNameWidth <= availableWidth ) {
+            // Filename fits; show "..." + as much of the left path as fits.
+            const int pathBudget = availableWidth - fileNameWidth;
+            if ( pathBudget >= ellipsisWidth ) {
+                const QString left = path_.left( path_.size() - fileName.size() );
+                const QString shortLeft = fitSuffixWidth( left, pathBudget );
+                return shortLeft + fileName;
+            }
+            // No room for prefix at all; just show filename.
+            return fileName;
+        }
+        // Filename itself overflows; truncate from the left of the filename.
+        return fitSuffixWidth( fileName, availableWidth );
+    }
+
+    // path_ has no separate filename portion (e.g. trailing slash) — fall
+    // back to left-truncating the whole path.
+    return fitSuffixWidth( path_, availableWidth );
 }
 
 void PathLine::contextMenuEvent( QContextMenuEvent* event )
@@ -70,61 +160,19 @@ void PathLine::contextMenuEvent( QContextMenuEvent* event )
     connect( copySelection, &QAction::triggered, this,
              [ this ]( auto ) { sendTextToClipboard( this->selectedText() ); } );
 
-    connect( selectAll, &QAction::triggered, this,
-             [ this ]( auto ) { setSelection( 0, klogg::isize( this->text() ) ); } );
+    connect( selectAll, &QAction::triggered, this, [ this ]( auto ) {
+        // Select all operates on the rendered ellipsized display text.
+        setSelection( 0, klogg::isize( this->ellipsizedDisplay() ) );
+    } );
 
     menu.exec( event->globalPos() );
 }
 
 void PathLine::paintEvent( QPaintEvent* paintEvent )
 {
-    if ( path_.isEmpty() ) {
-        InfoLine::paintEvent( paintEvent );
-        return;
-    }
-
-    const QFontMetrics fm = fontMetrics();
-    const int fullWidth = fm.horizontalAdvance( path_ );
-    const int availableWidth = width();
-
-    QString textToDisplay;
-    if ( fullWidth <= availableWidth ) {
-        textToDisplay = path_;
-    } else {
-        const QString fileName = QFileInfo( path_ ).fileName();
-        const int fileNameWidth = fm.horizontalAdvance( fileName );
-        const int ellipsisWidth = fm.horizontalAdvance( QStringLiteral( "..." ) );
-
-        if ( fileNameWidth + ellipsisWidth < availableWidth ) {
-            const int pathWidth = availableWidth - fileNameWidth - ellipsisWidth;
-            int pos = 0;
-            int pathPixelWidth = 0;
-            while ( pos < path_.size() && pathPixelWidth < pathWidth ) {
-                pathPixelWidth += fm.horizontalAdvance( path_[ pos++ ] );
-            }
-            if ( pos >= path_.size() ) {
-                textToDisplay = path_;
-            } else {
-                textToDisplay = QStringLiteral( "..." ) + path_.mid( pos );
-            }
-        } else {
-            if ( fileNameWidth < availableWidth ) {
-                textToDisplay = fileName;
-            } else {
-                const int ellipsisW = fm.horizontalAdvance( QStringLiteral( "..." ) );
-                const int nameWidth = availableWidth - ellipsisW;
-                int pos = fileName.size();
-                int namePixelWidth = 0;
-                while ( pos > 0 && namePixelWidth < nameWidth ) {
-                    const QChar ch = fileName[ pos - 1 ];
-                    namePixelWidth += fm.horizontalAdvance( ch );
-                    --pos;
-                }
-                textToDisplay = QStringLiteral( "..." ) + fileName.mid( pos );
-            }
-        }
-    }
-
-    setText( textToDisplay );
+    // QLabel's text is set in setPath() to the ellipsized display string.
+    // We just need to honor the parent's background fill (InfoLine adds a
+    // gradient gauge during searches) and let QLabel draw its own text.
     InfoLine::paintEvent( paintEvent );
 }
+
