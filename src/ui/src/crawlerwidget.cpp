@@ -558,6 +558,22 @@ void CrawlerWidget::updateFilteredView( LinesCount nbMatches, int progress,
         stopButton_->hide();
         searchButton_->show();
         clearButton_->show();
+
+        // When auto-refresh is enabled and file was appended, update the search
+        // range limits in the views so that newly appended lines are displayed
+        // with proper highlighting instead of being grayed out.
+        const auto currentTotalLines = LineNumber( logData_->getNbLine().get() );
+        if ( currentTotalLines > searchEndLine_ ) {
+            searchEndLine_ = currentTotalLines;
+            logMainView_->setSearchLimits( searchStartLine_, searchEndLine_ );
+            filteredView_->setSearchLimits( searchStartLine_, searchEndLine_ );
+        }
+        else {
+            // File has not grown, but search just finished - still need to
+            // update the view to ensure proper display of all lines.
+            logMainView_->update();
+            filteredView_->update();
+        }
     }
     else {
         // Search in progress
@@ -593,6 +609,7 @@ void CrawlerWidget::updateFilteredView( LinesCount nbMatches, int progress,
 
         // Also update the top window for the coloured bullets.
         update();
+        logMainView_->update();
     }
 
     // Try to restore the filtered window selection close to where it was
@@ -604,6 +621,8 @@ void CrawlerWidget::updateFilteredView( LinesCount nbMatches, int progress,
                   << " absolute line number (0based) " << currentLineNumber_ << " index "
                   << currenLineIndex;
         filteredView_->selectAndDisplayLine( currenLineIndex );
+        // Update both views' search limits to keep them in sync
+        logMainView_->setSearchLimits( searchStartLine_, searchEndLine_ );
         filteredView_->setSearchLimits( searchStartLine_, searchEndLine_ );
     }
 }
@@ -835,6 +854,14 @@ void CrawlerWidget::loadingFinishedHandler( LoadingStatus status )
             const auto searchEndForRefresh
                 = ( totalLines > searchEndLine_ ) ? totalLines : searchEndLine_;
             logFilteredData_->updateSearch( searchStartLine_, searchEndForRefresh );
+
+            // Update view's search range to match the extended range so that
+            // newly appended lines are displayed with proper highlighting.
+            if ( totalLines > searchEndLine_ ) {
+                searchEndLine_ = totalLines;
+                logMainView_->setSearchLimits( searchStartLine_, searchEndLine_ );
+                filteredView_->setSearchLimits( searchStartLine_, searchEndLine_ );
+            }
         }
     }
 
