@@ -66,7 +66,16 @@ ViewInterface* Session::open( const QString& file_name,
 
 void Session::close( const ViewInterface* view )
 {
-    openFiles_.erase( openFiles_.find( view ) );
+    auto it = openFiles_.find( view );
+    if ( it != openFiles_.end() ) {
+        // CRITICAL: LogFilteredData holds a raw pointer to LogData (sourceLogData_).
+        // We must ensure LogFilteredData is destroyed BEFORE LogData to avoid
+        // use-after-free in any background search threads that may still be running.
+        // Clearing the logFilteredData shared_ptr first ensures proper destruction order.
+        it->second.logFilteredData.reset();
+        // Now it's safe to erase the LogData
+        openFiles_.erase( it );
+    }
 }
 
 QString Session::getFilename( const ViewInterface* view ) const

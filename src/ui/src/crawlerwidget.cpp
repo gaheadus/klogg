@@ -647,6 +647,10 @@ void CrawlerWidget::updateLineNumberHandler( LineNumber line, LinesCount nLines,
 
 void CrawlerWidget::updateDisplayedMarks()
 {
+    if ( !logData_ ) {
+        return;
+    }
+
     const auto& config = Configuration::get();
     if ( !config.showMarksFromAllSearchTabs() ) {
         for ( const auto& [ view, filteredData ] : filteredViewsData_ ) {
@@ -674,6 +678,10 @@ void CrawlerWidget::updateDisplayedMarks()
 
 void CrawlerWidget::markLinesFromMain( const klogg::vector<LineNumber>& lines )
 {
+    if ( !logData_ || !logFilteredData_ || !filteredView_ || !logMainView_ ) {
+        return;
+    }
+
     klogg::vector<LineNumber> alreadyMarkedLines;
     alreadyMarkedLines.reserve( lines.size() );
 
@@ -923,6 +931,11 @@ void CrawlerWidget::fileChangedHandler( MonitoredFileStatus status )
 AbstractLogView* CrawlerWidget::activeView() const
 {
     QWidget* activeView;
+
+    // Guard against null filteredView_ (can happen during destruction)
+    if ( !filteredView_ ) {
+        return logMainView_;
+    }
 
     // Search in the window that has focus, or the window where 'Find' was
     // called from, or the main window.
@@ -1547,8 +1560,21 @@ void CrawlerWidget::changeFilteredView( int tabIndex )
         filteredData->interruptSearch();
     }
 
+    // Find the LogFilteredData for the target tab with safety check
+    const auto filteredDataIt = filteredViewsData_.find( tabFilteredView );
+    if ( filteredDataIt == filteredViewsData_.end() ) {
+        LOG_ERROR << "changeFilteredView: tab not found in filteredViewsData_";
+        return;
+    }
+
     filteredView_ = tabFilteredView;
-    logFilteredData_ = filteredViewsData_.at( tabFilteredView );
+    logFilteredData_ = filteredDataIt->second;
+
+    // Guard against widget destruction during tab switch
+    if ( !logFilteredData_ || !filteredView_ ) {
+        LOG_ERROR << "changeFilteredView: null filteredView or logFilteredData after switch";
+        return;
+    }
 
     // Batch all the forced refreshes below into a single repaint to avoid
     // the 6+ individual update() calls that previously fired from
@@ -1569,7 +1595,8 @@ void CrawlerWidget::changeFilteredView( int tabIndex )
     // This ensures the tab shows the latest search results when switched to.
     // Use the tab's search limits (searchStartLine_ to searchEndLine_) for consistency
     // with loadingFinishedHandler.
-    if ( searchState_.isAutorefreshAllowed() ) {
+    // Additional safety check to prevent calling updateSearch on destroyed data.
+    if ( searchState_.isAutorefreshAllowed() && logFilteredData_ ) {
         logFilteredData_->updateSearch( searchStartLine_, searchEndLine_ );
     }
 
@@ -1857,48 +1884,64 @@ void CrawlerWidget::registerShortcuts()
     ShortcutAction::registerShortcut(
         configuredShortcuts, shortcuts_, this, Qt::WidgetWithChildrenShortcut,
         ShortcutAction::CrawlerChangeVisibilityForward, [ this ]() {
-            visibilityBox_->setCurrentIndex( ( visibilityBox_->currentIndex() + 1 )
-                                             % visibilityBox_->count() );
+            if ( visibilityBox_ ) {
+                visibilityBox_->setCurrentIndex( ( visibilityBox_->currentIndex() + 1 )
+                                                 % visibilityBox_->count() );
+            }
         } );
 
     ShortcutAction::registerShortcut(
         configuredShortcuts, shortcuts_, this, Qt::WidgetWithChildrenShortcut,
-        ShortcutAction::CrawlerEnableCaseMatching, [ this ]() { matchCaseButton_->toggle(); } );
+        ShortcutAction::CrawlerEnableCaseMatching, [ this ]() {
+            if ( matchCaseButton_ ) matchCaseButton_->toggle();
+        } );
 
     ShortcutAction::registerShortcut(
         configuredShortcuts, shortcuts_, this, Qt::WidgetWithChildrenShortcut,
-        ShortcutAction::CrawlerEnableRegex, [ this ]() { useRegexpButton_->toggle(); } );
+        ShortcutAction::CrawlerEnableRegex, [ this ]() {
+            if ( useRegexpButton_ ) useRegexpButton_->toggle();
+        } );
 
     ShortcutAction::registerShortcut(
         configuredShortcuts, shortcuts_, this, Qt::WidgetWithChildrenShortcut,
-        ShortcutAction::CrawlerEnableInverseMatching, [ this ]() { inverseButton_->toggle(); } );
+        ShortcutAction::CrawlerEnableInverseMatching, [ this ]() {
+            if ( inverseButton_ ) inverseButton_->toggle();
+        } );
 
     ShortcutAction::registerShortcut(
         configuredShortcuts, shortcuts_, this, Qt::WidgetWithChildrenShortcut,
-        ShortcutAction::CrawlerEnableRegexCombining, [ this ]() { booleanButton_->toggle(); } );
+        ShortcutAction::CrawlerEnableRegexCombining, [ this ]() {
+            if ( booleanButton_ ) booleanButton_->toggle();
+        } );
 
     ShortcutAction::registerShortcut(
         configuredShortcuts, shortcuts_, this, Qt::WidgetWithChildrenShortcut,
-        ShortcutAction::CrawlerEnableAutoRefresh, [ this ]() { searchRefreshButton_->toggle(); } );
+        ShortcutAction::CrawlerEnableAutoRefresh, [ this ]() {
+            if ( searchRefreshButton_ ) searchRefreshButton_->toggle();
+        } );
 
     ShortcutAction::registerShortcut(
         configuredShortcuts, shortcuts_, this, Qt::WidgetWithChildrenShortcut,
-        ShortcutAction::CrawlerKeepResults, [ this ]() { keepSearchResultsButton_->toggle(); } );
+        ShortcutAction::CrawlerKeepResults, [ this ]() {
+            if ( keepSearchResultsButton_ ) keepSearchResultsButton_->toggle();
+        } );
 
     ShortcutAction::registerShortcut( configuredShortcuts, shortcuts_, this,
                                       Qt::WidgetWithChildrenShortcut,
                                       ShortcutAction::CrawlerChangeVisibilityBackward, [ this ]() {
-                                          int nextIndex = visibilityBox_->currentIndex() - 1;
-                                          if ( nextIndex < 0 ) {
-                                              nextIndex = visibilityBox_->count() - 1;
+                                          if ( visibilityBox_ ) {
+                                              int nextIndex = visibilityBox_->currentIndex() - 1;
+                                              if ( nextIndex < 0 ) {
+                                                  nextIndex = visibilityBox_->count() - 1;
+                                              }
+                                              visibilityBox_->setCurrentIndex( nextIndex );
                                           }
-                                          visibilityBox_->setCurrentIndex( nextIndex );
                                       } );
 
     ShortcutAction::registerShortcut(
         configuredShortcuts, shortcuts_, this, Qt::WidgetWithChildrenShortcut,
         ShortcutAction::CrawlerChangeVisibilityToMarksAndMatches, [ this ]() {
-            if ( visibilityBox_->count() > 0 ) {
+            if ( visibilityBox_ && visibilityBox_->count() > 0 ) {
                 visibilityBox_->setCurrentIndex( 0 );
             }
         } );
@@ -1906,7 +1949,7 @@ void CrawlerWidget::registerShortcuts()
     ShortcutAction::registerShortcut( configuredShortcuts, shortcuts_, this,
                                       Qt::WidgetWithChildrenShortcut,
                                       ShortcutAction::CrawlerChangeVisibilityToMarks, [ this ]() {
-                                          if ( visibilityBox_->count() > 1 ) {
+                                          if ( visibilityBox_ && visibilityBox_->count() > 1 ) {
                                               visibilityBox_->setCurrentIndex( 1 );
                                           }
                                       } );
@@ -1914,7 +1957,7 @@ void CrawlerWidget::registerShortcuts()
     ShortcutAction::registerShortcut( configuredShortcuts, shortcuts_, this,
                                       Qt::WidgetWithChildrenShortcut,
                                       ShortcutAction::CrawlerChangeVisibilityToMatches, [ this ]() {
-                                          if ( visibilityBox_->count() > 2 ) {
+                                          if ( visibilityBox_ && visibilityBox_->count() > 2 ) {
                                               visibilityBox_->setCurrentIndex( 2 );
                                           }
                                       } );
@@ -1959,7 +2002,10 @@ void CrawlerWidget::registerShortcuts()
         ShortcutAction::LogViewClearColorLabels, [ this ]() { clearColorLabels(); } );
 
     logMainView_->registerShortcuts();
-    filteredView_->registerShortcuts();
+    // Guard against filteredView_ being null during early initialization
+    if ( filteredView_ ) {
+        filteredView_->registerShortcuts();
+    }
 }
 
 void CrawlerWidget::loadIcons()

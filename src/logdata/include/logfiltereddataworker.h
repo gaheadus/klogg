@@ -130,8 +130,8 @@ class SearchOperation : public QObject {
     Q_OBJECT
 public:
     SearchOperation( const LogData& sourceLogData, AtomicFlag& interruptRequested,
-                     const RegularExpressionPattern& regExp, LineNumber startLine,
-                     LineNumber endLine );
+                    AtomicFlag* destroying, const RegularExpressionPattern& regExp,
+                    LineNumber startLine, LineNumber endLine );
 
     // Run the search operation, returns true if it has been done
     // and false if it has been cancelled (results not copied)
@@ -147,6 +147,7 @@ protected:
     void doSearch( SearchData& result, LineNumber initialLine );
 
     AtomicFlag& interruptRequested_;
+    AtomicFlag* destroying_;
     const RegularExpressionPattern regexp_;
     const LogData& sourceLogData_;
     LineNumber startLine_;
@@ -157,9 +158,9 @@ class FullSearchOperation : public SearchOperation {
     Q_OBJECT
 public:
     FullSearchOperation( const LogData& sourceLogData, AtomicFlag& interruptRequested,
-                         const RegularExpressionPattern& regExp, LineNumber startLine,
-                         LineNumber endLine )
-        : SearchOperation( sourceLogData, interruptRequested, regExp, startLine, endLine )
+                        AtomicFlag* destroying, const RegularExpressionPattern& regExp,
+                        LineNumber startLine, LineNumber endLine )
+        : SearchOperation( sourceLogData, interruptRequested, destroying, regExp, startLine, endLine )
     {
     }
 
@@ -170,9 +171,9 @@ class UpdateSearchOperation : public SearchOperation {
     Q_OBJECT
 public:
     UpdateSearchOperation( const LogData& sourceLogData, AtomicFlag& interruptRequested,
-                           const RegularExpressionPattern& regExp, LineNumber startLine,
-                           LineNumber endLine, LineNumber position )
-        : SearchOperation( sourceLogData, interruptRequested, regExp, startLine, endLine )
+                          AtomicFlag* destroying, const RegularExpressionPattern& regExp,
+                          LineNumber startLine, LineNumber endLine, LineNumber position )
+        : SearchOperation( sourceLogData, interruptRequested, destroying, regExp, startLine, endLine )
         , initialPosition_( position )
     {
     }
@@ -223,6 +224,9 @@ private:
 private:
     const LogData& sourceLogData_;
     AtomicFlag interruptRequested_;
+    // Flag to indicate the worker is being destroyed - TBB lambdas check this
+    // to prevent accessing 'this' after destruction.
+    AtomicFlag destroying_;
 
     QThreadPool operationsPool_;
     Mutex operationsMutex_;

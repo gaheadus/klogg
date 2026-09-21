@@ -110,7 +110,16 @@ namespace {
 
 void signalCrawlerToFollowFile( CrawlerWidget* crawler_widget )
 {
-    dispatchToMainThread( [ crawler_widget ]() { crawler_widget->followSet( true ); } );
+    // Guard against use-after-free if the widget is destroyed before the lambda runs
+    if ( !crawler_widget ) {
+        return;
+    }
+    dispatchToMainThread( [ crawler_widget ]() {
+        if ( !crawler_widget ) {
+            return;
+        }
+        crawler_widget->followSet( true );
+    } );
 }
 
 static constexpr auto ClipboardMaxTry = 5;

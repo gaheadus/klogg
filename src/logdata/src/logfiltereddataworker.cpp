@@ -180,9 +180,17 @@ LogFilteredDataWorker::LogFilteredDataWorker( const LogData& sourceLogData )
 LogFilteredDataWorker::~LogFilteredDataWorker() noexcept
 {
     try {
+        // CRITICAL: Set destroying_ flag FIRST to prevent any new operations
+        // and to signal TBB threads to stop accessing 'this'.
+        destroying_.set();
         interruptRequested_.set();
-        ScopedLock locker( operationsMutex_ );
-        operationsPool_.waitForDone();
+
+        // Wait for the thread pool to complete
+        {
+            ScopedLock locker( operationsMutex_ );
+            operationsPool_.waitForDone();
+        }
+
         LOG_INFO << "LogFilteredDataWorker shutdown";
     } catch ( const std::exception& e ) {
         LOG_ERROR << "Failed to destroy LogFilteredDataWorker: " << e.what();
@@ -213,7 +221,7 @@ void LogFilteredDataWorker::search( const RegularExpressionPattern& regExp, Line
         operationStarted.release();
         ScopedLock operationLock( operationsMutex_ );
         auto operationRequested = std::make_unique<FullSearchOperation>(
-            sourceLogData_, interruptRequested_, regExp, startLine, endLine );
+            sourceLogData_, interruptRequested_, &destroying_, regExp, startLine, endLine );
         connectSignalsAndRun( operationRequested.get() );
     } ) );
     operationStarted.acquire();
@@ -235,7 +243,7 @@ void LogFilteredDataWorker::updateSearch( const RegularExpressionPattern& regExp
             operationStarted.release();
             ScopedLock operationLock( operationsMutex_ );
             auto operationRequested = std::make_unique<UpdateSearchOperation>(
-                sourceLogData_, interruptRequested_, regExp, startLine, endLine, position );
+                sourceLogData_, interruptRequested_, &destroying_, regExp, startLine, endLine, position );
             connectSignalsAndRun( operationRequested.get() );
         } ) );
 
@@ -259,10 +267,11 @@ SearchResults LogFilteredDataWorker::getSearchResults() const
 //
 
 SearchOperation::SearchOperation( const LogData& sourceLogData, AtomicFlag& interruptRequested,
-                                  const RegularExpressionPattern& regExp, LineNumber startLine,
-                                  LineNumber endLine )
+                                  AtomicFlag* destroying, const RegularExpressionPattern& regExp,
+                                  LineNumber startLine, LineNumber endLine )
 
     : interruptRequested_( interruptRequested )
+    , destroying_( destroying )
     , regexp_( regExp )
     , sourceLogData_( sourceLogData )
     , startLine_( startLine )
@@ -324,9 +333,9 @@ void SearchOperation::doSearch( SearchData& searchData, LineNumber initialLine )
             regularExpression.createMatcher(), microseconds{ 0 },
             RegexMatcherNode(
                 searchGraph, 1, [ &regexMatchers, index, this ]( const BlockDataType& blockData ) {
-                    if ( interruptRequested_ ) {
+                    // Check both interrupt and destroy flags
+                    if ( interruptRequested_ || ( destroying_ && *destroying_ ) ) {
                         LOG_INFO << "Matcher " << index << " interrupted";
-                        auto results = std::make_shared<PartialSearchResults>();
                         blockData->searchResults.chunkStart = blockData->chunkStart;
                         blockData->searchResults.processedLines
                             = LinesCount{ blockData->lines.endOfLines.size() };
@@ -364,8 +373,9 @@ void SearchOperation::doSearch( SearchData& searchData, LineNumber initialLine )
 
     auto matchProcessor
         = tbb::flow::function_node<BlockDataType, tbb::flow::continue_msg, tbb::flow::rejecting>(
-            searchGraph, 1, [ & ]( const BlockDataType& blockData ) {
-                if ( interruptRequested_ ) {
+            searchGraph, 1, [ this, &searchData, &maxLength, &nbMatches, &totalProcessedLines, &matchCombiningDuration, &reportedMatches, &reportedPercentage, &initialLine, &totalLines ]( const BlockDataType& blockData ) {
+                // Check both interrupt and destroy flags
+                if ( interruptRequested_ || ( destroying_ && *destroying_ ) ) {
                     LOG_INFO << "Match processor interrupted";
                     return tbb::flow::continue_msg{};
                 }
@@ -425,7 +435,7 @@ void SearchOperation::doSearch( SearchData& searchData, LineNumber initialLine )
     tbb::flow::make_edge( matchProcessor, blockPrefetcher.decrementer() );
 
     auto chunkStart = initialLine;
-    while ( chunkStart < endLine && !interruptRequested_ ) {
+    while ( chunkStart < endLine && !interruptRequested_ && !( destroying_ && *destroying_ ) ) {
         const auto lineSourceStartTime = high_resolution_clock::now();
         LOG_DEBUG << "Reading chunk starting at " << chunkStart;
 
@@ -451,7 +461,7 @@ void SearchOperation::doSearch( SearchData& searchData, LineNumber initialLine )
         chunkStart = chunkStart + nbLinesInChunk;
         fileReadingDuration += chunkReadTime;
 
-        while ( !blockPrefetcher.try_put( blockData ) && !interruptRequested_ ) {
+        while ( !blockPrefetcher.try_put( blockData ) && !interruptRequested_ && !( destroying_ && *destroying_ ) ) {
             std::this_thread::sleep_for( std::chrono::milliseconds( 1 ) );
         }
     }
@@ -490,6 +500,12 @@ void SearchOperation::doSearch( SearchData& searchData, LineNumber initialLine )
 // Called in the worker thread's context
 void FullSearchOperation::run( SearchData& searchData )
 {
+    // Check if the worker is being destroyed before starting work
+    if ( interruptRequested_ ) {
+        LOG_INFO << "FullSearchOperation: interrupted before starting";
+        return;
+    }
+
     try {
         // Clear the shared data
         searchData.clear();
@@ -507,6 +523,12 @@ void FullSearchOperation::run( SearchData& searchData )
 // Called in the worker thread's context
 void UpdateSearchOperation::run( SearchData& searchData )
 {
+    // Check if the worker is being destroyed before starting work
+    if ( interruptRequested_ ) {
+        LOG_INFO << "UpdateSearchOperation: interrupted before starting";
+        return;
+    }
+
     try {
         auto initialLine = qMax( searchData.getLastProcessedLine(), initialPosition_ );
 

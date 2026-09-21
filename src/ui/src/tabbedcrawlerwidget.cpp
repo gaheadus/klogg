@@ -320,29 +320,36 @@ void TabbedCrawlerWidget::keyPressEvent( QKeyEvent* event )
 
     LOG_DEBUG << "TabbedCrawlerWidget::keyPressEvent";
 
+    const int tabCount = count();
+    if ( tabCount == 0 ) {
+        QTabWidget::keyPressEvent( event );
+        return;
+    }
+
     // Ctrl + tab
     if ( ( mod == Qt::ControlModifier && key == Qt::Key_Tab )
          || ( mod == Qt::ControlModifier && key == Qt::Key_PageDown )
          || ( mod == ( Qt::ControlModifier | Qt::AltModifier | Qt::KeypadModifier )
               && key == Qt::Key_Right ) ) {
-        setCurrentIndex( ( currentIndex() + 1 ) % count() );
+        setCurrentIndex( ( currentIndex() + 1 ) % tabCount );
     }
     // Ctrl + shift + tab
     else if ( ( mod == ( Qt::ControlModifier | Qt::ShiftModifier ) && key == Qt::Key_Tab )
               || ( mod == Qt::ControlModifier && key == Qt::Key_PageUp )
               || ( mod == ( Qt::ControlModifier | Qt::AltModifier | Qt::KeypadModifier )
                    && key == Qt::Key_Left ) ) {
-        setCurrentIndex( ( currentIndex() - 1 >= 0 ) ? currentIndex() - 1 : count() - 1 );
+        setCurrentIndex( ( currentIndex() - 1 >= 0 ) ? currentIndex() - 1 : tabCount - 1 );
     }
     // Ctrl + numbers
     else if ( mod == Qt::ControlModifier && ( key >= Qt::Key_1 && key <= Qt::Key_8 ) ) {
         int newIndex = key - Qt::Key_0;
-        if ( newIndex <= count() )
+        if ( newIndex > 0 && newIndex <= tabCount )
             setCurrentIndex( newIndex - 1 );
     }
     // Ctrl + 9
     else if ( mod == Qt::ControlModifier && key == Qt::Key_9 ) {
-        setCurrentIndex( count() - 1 );
+        if ( tabCount > 0 )
+            setCurrentIndex( tabCount - 1 );
     }
     else if ( mod == Qt::ControlModifier && ( key == Qt::Key_Q || key == Qt::Key_W ) ) {
         Q_EMIT tabCloseRequested( currentIndex() );

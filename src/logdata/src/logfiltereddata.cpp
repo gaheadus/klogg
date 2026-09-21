@@ -185,6 +185,9 @@ bool LogFilteredData::isLineMatched( LineNumber lineNumber ) const
 
 LinesCount LogFilteredData::getNbTotalLines() const
 {
+    if ( !sourceLogData_ ) {
+        return 0_lcount;
+    }
     return sourceLogData_->getNbLine();
 }
 
@@ -233,6 +236,9 @@ void LogFilteredData::iterateOverLines( const std::function<void( LineNumber )>&
 
 void LogFilteredData::toggleMark( LineNumber line )
 {
+    if ( !sourceLogData_ ) {
+        return;
+    }
     if ( ( line >= 0_lnum ) && line < sourceLogData_->getNbLine() ) {
         if ( !marks_.addChecked( line.get() ) ) {
             marks_.remove( line.get() );
@@ -249,6 +255,9 @@ void LogFilteredData::toggleMark( LineNumber line )
 
 void LogFilteredData::addMark( LineNumber line )
 {
+    if ( !sourceLogData_ ) {
+        return;
+    }
     if ( ( line >= 0_lnum ) && line < sourceLogData_->getNbLine() ) {
         marks_.add( line.get() );
         updateMaxLengthMarks( line, {} );
@@ -304,6 +313,10 @@ void LogFilteredData::deleteMark( LineNumber line )
 void LogFilteredData::updateMaxLengthMarks( OptionalLineNumber added_line,
                                             OptionalLineNumber removed_line )
 {
+    if ( !sourceLogData_ ) {
+        return;
+    }
+
     marks_and_matches_ = matching_lines_ | marks_;
 
     if ( added_line.has_value() ) {
@@ -318,10 +331,12 @@ void LogFilteredData::updateMaxLengthMarks( OptionalLineNumber added_line,
         marks_.iterate(
             []( uint64_t line, void* context ) -> bool {
                 auto* self = static_cast<LogFilteredData*>( context );
-                self->maxLengthMarks_
-                    = qMax( self->maxLengthMarks_,
-                            self->sourceLogData_->getLineLength( LineNumber( line ) ) );
-                return true;
+                if ( self && self->sourceLogData_ ) {
+                    self->maxLengthMarks_
+                        = qMax( self->maxLengthMarks_,
+                                self->sourceLogData_->getLineLength( LineNumber( line ) ) );
+                }
+                return self && self->sourceLogData_;
             },
             static_cast<void*>( this ) );
     }
@@ -434,6 +449,13 @@ void LogFilteredData::handleSearchProgressed( LinesCount nbMatches, int progress
 {
     assert( nbMatches >= 0_lcount );
 
+    // Guard against signals arriving after sourceLogData_ has been destroyed
+    // (e.g., during widget destruction or tab closure).
+    if ( !sourceLogData_ ) {
+        LOG_WARNING << "handleSearchProgressed called with no sourceLogData, ignoring";
+        return;
+    }
+
     const auto searchResults = workerThread_.getSearchResults();
 
     matching_lines_ |= searchResults.newMatches;
@@ -522,6 +544,9 @@ LineNumber LogFilteredData::findFilteredLine( LineNumber lineNum ) const
 // Implementation of the virtual function.
 QString LogFilteredData::doGetLineString( LineNumber index ) const
 {
+    if ( !sourceLogData_ ) {
+        return QString();
+    }
     const auto line = findLogDataLine( index );
     return sourceLogData_->getLineString( line );
 }
@@ -529,6 +554,9 @@ QString LogFilteredData::doGetLineString( LineNumber index ) const
 // Implementation of the virtual function.
 QString LogFilteredData::doGetExpandedLineString( LineNumber index ) const
 {
+    if ( !sourceLogData_ ) {
+        return QString();
+    }
     const auto line = findLogDataLine( index );
     return sourceLogData_->getExpandedLineString( line );
 }
@@ -584,26 +612,36 @@ LineLength LogFilteredData::doGetMaxLength() const
 // Implementation of the virtual function.
 LineLength LogFilteredData::doGetLineLength( LineNumber lineNum ) const
 {
+    if ( !sourceLogData_ ) {
+        return 0_length;
+    }
     LineNumber line = findLogDataLine( lineNum );
     return sourceLogData_->getLineLength( line );
 }
 
-void LogFilteredData::doSetDisplayEncoding( const char* encoding )
+void LogFilteredData::doSetDisplayEncoding( const char* /*encoding*/ )
 {
-    LOG_DEBUG << "AbstractLogData::setDisplayEncoding: " << encoding;
+    LOG_DEBUG << "AbstractLogData::setDisplayEncoding";
 }
 
 QTextCodec* LogFilteredData::doGetDisplayEncoding() const
 {
+    if ( !sourceLogData_ ) {
+        return nullptr;
+    }
     return sourceLogData_->getDisplayEncoding();
 }
 
 void LogFilteredData::doAttachReader() const
 {
-    sourceLogData_->attachReader();
+    if ( sourceLogData_ ) {
+        sourceLogData_->attachReader();
+    }
 }
 
 void LogFilteredData::doDetachReader() const
 {
-    sourceLogData_->detachReader();
+    if ( sourceLogData_ ) {
+        sourceLogData_->detachReader();
+    }
 }
