@@ -179,7 +179,10 @@ LineNumber CrawlerWidget::getTopLine() const
 
 QString CrawlerWidget::getSelectedText() const
 {
-    if ( filteredView_->hasFocus() )
+    if ( !logMainView_ ) {
+        return {};
+    }
+    if ( filteredView_ && filteredView_->hasFocus() )
         return filteredView_->getSelectedText();
     else
         return logMainView_->getSelectedText();
@@ -187,7 +190,10 @@ QString CrawlerWidget::getSelectedText() const
 
 bool CrawlerWidget::isPartialSelection() const
 {
-    if ( filteredView_->hasFocus() )
+    if ( !logMainView_ ) {
+        return false;
+    }
+    if ( filteredView_ && filteredView_->hasFocus() )
         return filteredView_->isPartialSelection();
     else
         return logMainView_->isPartialSelection();
@@ -195,7 +201,10 @@ bool CrawlerWidget::isPartialSelection() const
 
 void CrawlerWidget::selectAll()
 {
-    activeView()->selectAll();
+    auto* view = activeView();
+    if ( view ) {
+        view->selectAll();
+    }
 }
 
 std::optional<int> CrawlerWidget::encodingMib() const
@@ -263,12 +272,19 @@ void CrawlerWidget::changeEvent( QEvent* event )
 
 void CrawlerWidget::stopLoading()
 {
+    if ( !logFilteredData_ || !logData_ ) {
+        return;
+    }
     logFilteredData_->interruptSearch();
     logData_->interruptLoading();
 }
 
 void CrawlerWidget::reload()
 {
+    if ( !logFilteredData_ || !logData_ || !filteredView_ ) {
+        return;
+    }
+
     searchState_.resetState();
     constexpr auto DropCache = true;
     logFilteredData_->clearSearch( DropCache );
@@ -299,6 +315,10 @@ void CrawlerWidget::focusSearchEdit()
 
 void CrawlerWidget::goToLine()
 {
+    if ( !filteredView_ || !logFilteredData_ ) {
+        return;
+    }
+
     bool isLineSelected = true;
     auto newLine = QInputDialog::getText( this, "Jump to line", "Line number" )
                        .toULongLong( &isLineSelected );
@@ -456,6 +476,9 @@ void CrawlerWidget::updatePredefinedFiltersWidget()
 
 void CrawlerWidget::stopSearch()
 {
+    if ( !logFilteredData_ ) {
+        return;
+    }
     logFilteredData_->interruptSearch();
     searchState_.stopSearch();
     printSearchInfoMessage();
@@ -518,6 +541,10 @@ void CrawlerWidget::showSearchContextMenu()
 void CrawlerWidget::updateFilteredView( LinesCount nbMatches, int progress,
                                         LineNumber initialPosition )
 {
+    if ( !logFilteredData_ || !filteredView_ ) {
+        return;
+    }
+
     LOG_DEBUG << "updateFilteredView received.";
 
     searchInfoLine_->show();
@@ -584,6 +611,9 @@ void CrawlerWidget::updateFilteredView( LinesCount nbMatches, int progress,
 void CrawlerWidget::jumpToMatchingLine( LineNumber filteredLineNb, LinesCount nLines,
                                         LineColumn startCol, LineLength nSymbols )
 {
+    if ( !logFilteredData_ ) {
+        return;
+    }
     const auto mainViewLine = logFilteredData_->getMatchingLineNumber( filteredLineNb );
     logMainView_->selectPortionAndDisplayLine( mainViewLine, nLines, startCol,
                                                nSymbols ); // FIXME: should be done with a signal.
@@ -839,6 +869,10 @@ void CrawlerWidget::loadingFinishedHandler( LoadingStatus status )
 
 void CrawlerWidget::fileChangedHandler( MonitoredFileStatus status )
 {
+    if ( !logFilteredData_ || !filteredView_ ) {
+        return;
+    }
+
     // Handle the case where the file has been truncated
     if ( status == MonitoredFileStatus::Truncated ) {
         // Clear all marks (TODO offer the option to keep them)
@@ -882,16 +916,18 @@ AbstractLogView* CrawlerWidget::activeView() const
 
 void CrawlerWidget::searchForward()
 {
-    LOG_DEBUG << "CrawlerWidget::searchForward";
-
-    activeView()->searchForward();
+    auto* view = activeView();
+    if ( view ) {
+        view->searchForward();
+    }
 }
 
 void CrawlerWidget::searchBackward()
 {
-    LOG_DEBUG << "CrawlerWidget::searchBackward";
-
-    activeView()->searchBackward();
+    auto* view = activeView();
+    if ( view ) {
+        view->searchBackward();
+    }
 }
 
 void CrawlerWidget::resetStateOnSearchPatternChanges()
@@ -1037,6 +1073,9 @@ void CrawlerWidget::setSearchPattern( const QString& searchPattern )
 
 void CrawlerWidget::mouseHoveredOverMatch( LineNumber line )
 {
+    if ( !logFilteredData_ || !overviewWidget_ ) {
+        return;
+    }
     const auto line_in_mainview = logFilteredData_->getMatchingLineNumber( line );
 
     overviewWidget_->highlightLine( line_in_mainview );
@@ -1049,6 +1088,10 @@ void CrawlerWidget::activityDetected()
 
 void CrawlerWidget::setSearchLimits( LineNumber startLine, LineNumber endLine )
 {
+    if ( !filteredView_ ) {
+        return;
+    }
+
     searchStartLine_ = startLine;
     searchEndLine_ = endLine;
 
@@ -1558,8 +1601,23 @@ void CrawlerWidget::closeFilteredView( int tabIndex )
             changeFilteredView( newIndex );
         }
         else {
-            filteredView_ = nullptr;
-            logFilteredData_ = nullptr;
+            // All tabs closed: create a new empty filtered view instead of setting nullptr.
+            // This ensures filteredView_ and logFilteredData_ are never nullptr,
+            // preventing crashes when UI elements trigger operations after all tabs are closed.
+            logFilteredData_ = logData_->getNewFilteredData();
+            filteredView_ = new FilteredView( logFilteredData_.get(), quickFindPattern_.get() );
+            filteredViewsData_[ filteredView_ ] = logFilteredData_;
+
+            // Save initial context for the new empty view
+            saveFilteredViewSearchContext( filteredView_, QString() );
+
+            filteredView_->setQuickHighlighters( colorLabelsManager_.colorLabels() );
+            connectAllFilteredViewSlots( filteredView_ );
+
+            const QSignalBlocker blocker( tabbedFilteredView_ );
+            const int newIndex = tabbedFilteredView_->addTab( filteredView_,
+                                    QString::number( nextTabNumber_++ ) );
+            tabbedFilteredView_->setCurrentIndex( newIndex );
         }
     }
 }
@@ -1960,6 +2018,10 @@ void CrawlerWidget::restoreFilteredViewSearchContext( FilteredView* view )
 void CrawlerWidget::replaceCurrentSearch( const QString& searchText,
                                           OptionalLineNumber endLine )
 {
+    if ( !logFilteredData_ || !filteredView_ || !logData_ ) {
+        return;
+    }
+
     LOG_INFO << "replacing current search with " << searchText;
     // Interrupt the search if it's ongoing
     logFilteredData_->interruptSearch();
@@ -2104,6 +2166,10 @@ void CrawlerWidget::changeDataStatus( DataStatus status )
 // Determine the right encoding and set the views.
 void CrawlerWidget::updateEncoding()
 {
+    if ( !logData_ || !logFilteredData_ || !filteredView_ ) {
+        return;
+    }
+
     const QTextCodec* textCodec = [ this ]() {
         QTextCodec* codec = nullptr;
         if ( !encodingMib_ ) {
@@ -2138,11 +2204,17 @@ void CrawlerWidget::changeTopViewSize( int32_t delta )
 
 void CrawlerWidget::addColorLabelToSelection( size_t label )
 {
+    if ( !filteredView_ ) {
+        return;
+    }
     updateColorLabels( colorLabelsManager_.setColorLabel( label, getSelectedText() ) );
 }
 
 void CrawlerWidget::addNextColorLabelToSelection()
 {
+    if ( !filteredView_ ) {
+        return;
+    }
     updateColorLabels( colorLabelsManager_.setNextColorLabel( getSelectedText() ) );
 }
 

@@ -1101,7 +1101,12 @@ void MainWindow::find()
 
 void MainWindow::clearLog()
 {
-    const auto current_file = session_.getFilename( currentCrawlerWidget() );
+    const auto crawler = currentCrawlerWidget();
+    if ( !crawler ) {
+        return;
+    }
+
+    const auto current_file = session_.getFilename( crawler );
     if ( QMessageBox::warning(
              this, tr( "klogg - clear file" ),
              tr( "Clear file %1? File content will be removed from disk, this is irreversible" )
@@ -1113,18 +1118,30 @@ void MainWindow::clearLog()
 
 void MainWindow::copyFullPath()
 {
-    const auto current_file = session_.getFilename( currentCrawlerWidget() );
+    const auto crawler = currentCrawlerWidget();
+    if ( !crawler ) {
+        return;
+    }
+    const auto current_file = session_.getFilename( crawler );
     sendTextToClipboard( QDir::toNativeSeparators( current_file ) );
 }
 
 void MainWindow::openContainingFolder()
 {
-    showPathInFileExplorer( session_.getFilename( currentCrawlerWidget() ) );
+    const auto crawler = currentCrawlerWidget();
+    if ( !crawler ) {
+        return;
+    }
+    showPathInFileExplorer( session_.getFilename( crawler ) );
 }
 
 void MainWindow::openInEditor()
 {
-    openFileInDefaultApplication( session_.getFilename( currentCrawlerWidget() ) );
+    const auto crawler = currentCrawlerWidget();
+    if ( !crawler ) {
+        return;
+    }
+    openFileInDefaultApplication( session_.getFilename( crawler ) );
 }
 
 void MainWindow::tryOpenClipboard( int tryTimes )
@@ -1381,8 +1398,13 @@ void MainWindow::updateLoadingProgress( int progress )
 {
     LOG_DEBUG << "Loading progress: " << progress;
 
+    const auto crawler = currentCrawlerWidget();
+    if ( !crawler ) {
+        return;
+    }
+
     QString current_file
-        = QDir::toNativeSeparators( session_.getFilename( currentCrawlerWidget() ) );
+        = QDir::toNativeSeparators( session_.getFilename( crawler ) );
 
     // We ignore 0% and 100% to avoid a flash when the file (or update)
     // is very short.
@@ -1415,7 +1437,9 @@ void MainWindow::handleLoadingFinished( LoadingStatus status )
         lineNumberHandler( 0_lnum, LinesCount( 0 ), LineColumn( 0 ), LineLength( 0 ) );
 
         // Now everything is ready, we can finally show the file!
-        currentCrawlerWidget()->show();
+        if ( auto crawler = currentCrawlerWidget() ) {
+            crawler->show();
+        }
     }
     else {
         if ( status == LoadingStatus::NoMemory ) {
@@ -1918,23 +1942,26 @@ void MainWindow::updateMenuBarFromDocument( const CrawlerWidget* crawler )
 // Update the top info line from the session
 void MainWindow::updateInfoLine()
 {
+    const auto crawler = currentCrawlerWidget();
+    if ( !crawler ) {
+        return;
+    }
+
     QLocale defaultLocale;
 
-    // Following should always work as we will only receive enter
-    // this slot if there is a crawler connected.
     QString current_file
-        = QDir::toNativeSeparators( session_.getFilename( currentCrawlerWidget() ) );
+        = QDir::toNativeSeparators( session_.getFilename( crawler ) );
 
     uint64_t fileSize;
     uint64_t fileNbLine;
     QDateTime lastModified;
 
-    session_.getFileInfo( currentCrawlerWidget(), &fileSize, &fileNbLine, &lastModified );
+    session_.getFileInfo( crawler, &fileSize, &fileNbLine, &lastModified );
 
     infoLine->setText( current_file );
     infoLine->setPath( current_file );
     sizeField->setText( readableSize( fileSize ) );
-    encodingField->setText( currentCrawlerWidget()->encodingText() );
+    encodingField->setText( crawler->encodingText() );
 
     if ( lastModified.isValid() ) {
         const QString date = defaultLocale.toString( lastModified, QLocale::NarrowFormat );

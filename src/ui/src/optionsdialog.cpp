@@ -489,7 +489,12 @@ void OptionsDialog::updateConfigFromDialog()
     bool restartAppMessage = false;
     auto& config = Configuration::get();
 
-    QFont font = QFont( fontFamilyBox->currentText(), ( fontSizeBox->currentText() ).toInt() );
+    bool ok = false;
+    int fontSize = fontSizeBox->currentText().toInt( &ok );
+    if ( !ok || fontSize <= 0 ) {
+        fontSize = 10; // Default fallback
+    }
+    QFont font = QFont( fontFamilyBox->currentText(), fontSize );
     config.setMainFont( font );
     config.setForceFontAntialiasing( fontSmoothCheckBox->isChecked() );
     config.setUseBoldFont( boldFontCheckBox->isChecked() );
