@@ -180,6 +180,7 @@ void CrawlerTabBar::mouseReleaseEvent( QMouseEvent* mouseEvent )
 {
     dragTabIndex_ = -1;
     dragTargetIndex_ = -1;
+    unsetCursor();
 
     if ( mouseEvent->button() == Qt::RightButton ) {
         int tab = tabAt( mouseEvent->pos() );
