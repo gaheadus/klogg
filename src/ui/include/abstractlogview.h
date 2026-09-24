@@ -484,6 +484,10 @@ class AbstractLogView : public QAbstractScrollArea, public SearchableWidgetInter
 
     void disableFollow();
 
+    // Stop the quick find search if running. Call this before destroying
+    // the view to prevent crashes.
+    void stopQuickFindSearch();
+
     // Utils functions
     void updateGlobalSelection();
 

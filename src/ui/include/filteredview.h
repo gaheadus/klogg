@@ -53,6 +53,11 @@ class FilteredView : public AbstractLogView
     FilteredView( LogFilteredData* newLogData,
             const QuickFindPattern* const quickFindPattern,
             QWidget* parent = nullptr );
+    ~FilteredView() override;
+
+    // Stop any ongoing quick find search. Call this before destroying the view
+    // to prevent crashes from accessing the view while it's being destroyed.
+    void stopSearch();
 
     // What is visible in the view.
     using Visibility = LogFilteredData::Visibility;

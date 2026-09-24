@@ -1644,6 +1644,17 @@ void CrawlerWidget::closeFilteredView( int tabIndex )
 
     const bool isClosingCurrentView = ( tabFilteredView == filteredView_ );
 
+    // CRITICAL: Stop any ongoing search and disconnect signals before deletion.
+    // This prevents crashes when the view is destroyed while search is still running.
+    if ( auto* filteredView = qobject_cast<FilteredView*>( tabFilteredView ) ) {
+        // Stop the quick find search
+        filteredView->stopSearch();
+    }
+
+    // Disconnect all signals from this view to prevent crashes when
+    // destroyed signals try to call into this CrawlerWidget
+    disconnect( tabFilteredView, nullptr, this, nullptr );
+
     connect( tabFilteredView, &QObject::destroyed, this, &CrawlerWidget::filteredViewDestroyed );
     tabbedFilteredView_->removeTab( tabIndex );
     tabFilteredView->deleteLater();

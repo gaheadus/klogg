@@ -53,6 +53,21 @@ FilteredView::FilteredView( LogFilteredData* newLogData,
     logFilteredData_ = newLogData;
 }
 
+FilteredView::~FilteredView()
+{
+    // Stop quick find search if running to prevent accessing this object
+    // after it's partially destroyed. This is especially important when
+    // the view is deleted as part of closing a tab.
+    stopQuickFindSearch();
+    // Note: AbstractLogView destructor will also try to stop and delete quickFind_,
+    // but stopQuickFindSearch() is idempotent so double-calling is safe.
+}
+
+void FilteredView::stopSearch()
+{
+    stopQuickFindSearch();
+}
+
 void FilteredView::setVisibility( Visibility visi )
 {
     assert( logFilteredData_ );

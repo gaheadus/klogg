@@ -1267,6 +1267,13 @@ void AbstractLogView::allowFollowMode( bool allow )
     followElasticHook_.allowHook( allow );
 }
 
+void AbstractLogView::stopQuickFindSearch()
+{
+    if ( quickFind_ ) {
+        quickFind_->stopSearch();
+    }
+}
+
 void AbstractLogView::setSearchPattern( const RegularExpressionPattern& pattern )
 {
     searchPattern_ = pattern;

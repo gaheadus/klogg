@@ -132,6 +132,7 @@ public:
     SearchOperation( const LogData& sourceLogData, AtomicFlag& interruptRequested,
                     AtomicFlag* destroying, const RegularExpressionPattern& regExp,
                     LineNumber startLine, LineNumber endLine );
+    ~SearchOperation() override;
 
     // Run the search operation, returns true if it has been done
     // and false if it has been cancelled (results not copied)

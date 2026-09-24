@@ -199,8 +199,10 @@ LogFilteredDataWorker::~LogFilteredDataWorker() noexcept
 
 void LogFilteredDataWorker::connectSignalsAndRun( SearchOperation* operationRequested )
 {
+    // Use QueuedConnection for both signals to ensure thread-safe signal delivery
+    // when signals are emitted from worker threads (TBB).
     connect( operationRequested, &SearchOperation::searchProgressed, this,
-             &LogFilteredDataWorker::searchProgressed );
+             &LogFilteredDataWorker::searchProgressed, Qt::QueuedConnection );
     connect( operationRequested, &SearchOperation::searchFinished, this,
              &LogFilteredDataWorker::searchFinished, Qt::QueuedConnection );
 
@@ -280,8 +282,25 @@ SearchOperation::SearchOperation( const LogData& sourceLogData, AtomicFlag& inte
 {
 }
 
+SearchOperation::~SearchOperation()
+{
+    // Signal to any running TBB threads that this operation is being destroyed.
+    // This prevents access to 'this' or emitting signals after destruction.
+    if ( destroying_ ) {
+        destroying_->set();
+    }
+    interruptRequested_.set();
+}
+
 void SearchOperation::doSearch( SearchData& searchData, LineNumber initialLine )
 {
+    // Check if the operation is being destroyed before starting
+    // This can happen if the search was interrupted or the owner was destroyed
+    if ( destroying_ && *destroying_ ) {
+        LOG_INFO << "SearchOperation::doSearch aborted - operation being destroyed";
+        return;
+    }
+
     const auto nbSourceLines = sourceLogData_.getNbLine();
 
     LOG_INFO << "Searching from line " << initialLine << " to " << nbSourceLines;
@@ -413,7 +432,9 @@ void SearchOperation::doSearch( SearchData& searchData, LineNumber initialLine )
                 const int percentage
                     = calculateProgress( totalProcessedLines.get(), totalLines.get() );
 
-                if ( percentage > reportedPercentage || nbMatches > reportedMatches ) {
+                // Only emit progress signal if the operation is not being destroyed
+                if ( ( percentage > reportedPercentage || nbMatches > reportedMatches )
+                     && ( !destroying_ || !*destroying_ ) ) {
 
                     Q_EMIT searchProgressed( nbMatches, std::min( 99, percentage ), initialLine );
 
@@ -493,8 +514,13 @@ void SearchOperation::doSearch( SearchData& searchData, LineNumber initialLine )
                     / ( 1024 * 1024 )
              << " MiB/s";
 
-    Q_EMIT searchProgressed( nbMatches, 100, initialLine );
-    Q_EMIT searchFinished();
+    // Only emit signals if the operation is not being destroyed.
+    // This prevents crashes when the search finishes after the owner
+    // has initiated destruction.
+    if ( !destroying_ || !*destroying_ ) {
+        Q_EMIT searchProgressed( nbMatches, 100, initialLine );
+        Q_EMIT searchFinished();
+    }
 }
 
 // Called in the worker thread's context
@@ -503,6 +529,12 @@ void FullSearchOperation::run( SearchData& searchData )
     // Check if the worker is being destroyed before starting work
     if ( interruptRequested_ ) {
         LOG_INFO << "FullSearchOperation: interrupted before starting";
+        return;
+    }
+
+    // Also check if the operation is being destroyed
+    if ( destroying_ && *destroying_ ) {
+        LOG_INFO << "FullSearchOperation: aborted - operation being destroyed";
         return;
     }
 
@@ -526,6 +558,12 @@ void UpdateSearchOperation::run( SearchData& searchData )
     // Check if the worker is being destroyed before starting work
     if ( interruptRequested_ ) {
         LOG_INFO << "UpdateSearchOperation: interrupted before starting";
+        return;
+    }
+
+    // Also check if the operation is being destroyed
+    if ( destroying_ && *destroying_ ) {
+        LOG_INFO << "UpdateSearchOperation: aborted - operation being destroyed";
         return;
     }
 
