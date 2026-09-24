@@ -569,7 +569,7 @@ class Configuration final : public Persistable<Configuration> {
 
     // View settings
     bool overviewVisible_ = true;
-    bool showMarksFromAllSearchTabs_ = false;
+    bool showMarksFromAllSearchTabs_ = true;
     bool lineNumbersVisibleInMain_ = false;
     bool lineNumbersVisibleInFiltered_ = true;
     bool minimizeToTray_ = false;
