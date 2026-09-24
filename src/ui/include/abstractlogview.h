@@ -53,6 +53,7 @@
 #include <QColor>
 #include <QEvent>
 #include <QFontMetrics>
+#include <QPointer>
 
 #ifdef GLOGG_PERF_MEASURE_FPS
 #include "perfcounter.h"
@@ -329,8 +330,12 @@ class AbstractLogView : public QAbstractScrollArea, public SearchableWidgetInter
     // Whether to show line numbers or not
     bool lineNumbersVisible_ = false;
 
-    // Pointer to the CrawlerWidget's data set
-    const AbstractLogData* logData_;
+    // Pointer to the CrawlerWidget's data set.
+    // Lifetime is guaranteed by the owning FilteredView (which holds a
+    // shared_ptr to the same LogFilteredData), so this pointer is valid
+    // for the entire lifetime of the view. If, despite that, the data is
+    // somehow destroyed first, callers must guard with `logData() != nullptr`.
+    const AbstractLogData* logData_ = nullptr;
 
     // Pointer to the Overview object
     Overview* overview_ = nullptr;

@@ -61,12 +61,12 @@ LogMainView::LogMainView( const LogData* newLogData, const QuickFindPattern* con
 }
 
 // Just update our internal record.
-void LogMainView::useNewFiltering( LogFilteredData* filteredData )
+void LogMainView::useNewFiltering( std::shared_ptr<LogFilteredData> filteredData )
 {
-    filteredData_ = filteredData;
+    filteredData_ = std::move( filteredData );
 
     if ( getOverview() != nullptr )
-        getOverview()->setFilteredData( filteredData_ );
+        getOverview()->setFilteredData( filteredData_.get() );
 
     forceRefresh();
 }
@@ -84,12 +84,18 @@ void LogMainView::doRegisterShortcuts()
     LOG_INFO << "Registering shortcuts for main view";
     AbstractLogView::doRegisterShortcuts();
     registerShortcut( ShortcutAction::LogViewNextMark, [ this ] {
+        if ( !filteredData_ ) {
+            return;
+        }
         const auto line = filteredData_->getMarkAfter( getViewPosition() );
         if ( line.has_value() ) {
             selectAndDisplayLine( *line );
         }
     } );
     registerShortcut( ShortcutAction::LogViewPrevMark, [ this ] {
+        if ( !filteredData_ ) {
+            return;
+        }
         const auto line = filteredData_->getMarkBefore( getViewPosition() );
         if ( line.has_value() ) {
             selectAndDisplayLine( *line );

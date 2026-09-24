@@ -45,22 +45,33 @@
 #include "filteredview.h"
 #include "shortcuts.h"
 
-FilteredView::FilteredView( LogFilteredData* newLogData,
+FilteredView::FilteredView( std::shared_ptr<LogFilteredData> newLogData,
                             const QuickFindPattern* const quickFindPattern, QWidget* parent )
-    : AbstractLogView( newLogData, quickFindPattern, parent )
+    : AbstractLogView( newLogData.get(), quickFindPattern, parent )
 {
-    // We keep a copy of the filtered data for fast lookup of the line type
-    logFilteredData_ = newLogData;
+    // FilteredView owns its LogFilteredData via shared_ptr. This guarantees
+    // the data outlives the view (or, conversely, is destroyed together
+    // with the view if no other owner keeps a reference), eliminating the
+    // dangling-pointer window where the view still references a LogFilteredData
+    // that has already been freed from the CrawlerWidget's map.
+    logFilteredData_ = std::move( newLogData );
 }
 
 FilteredView::~FilteredView()
 {
-    // Stop quick find search if running to prevent accessing this object
-    // after it's partially destroyed. This is especially important when
-    // the view is deleted as part of closing a tab.
+    // Stop quick find search before AbstractLogView (and its quickFind_) are
+    // destroyed. This is also done in AbstractLogView::~AbstractLogView but
+    // doing it here ensures the worker is stopped while this view is still
+    // fully alive (its vtable is still FilteredView's), so any signal handlers
+    // queued by the worker can safely reach us.
     stopQuickFindSearch();
-    // Note: AbstractLogView destructor will also try to stop and delete quickFind_,
-    // but stopQuickFindSearch() is idempotent so double-calling is safe.
+
+    // Drop our reference to the LogFilteredData NOW. This makes the destruction
+    // order explicit: we destroy the data after stopping QuickFind (which still
+    // references it) and before AbstractLogView::logData_ becomes invalid.
+    // If any external code still holds a shared_ptr, the data lives on; if
+    // not, it is destroyed here in a well-defined order.
+    logFilteredData_.reset();
 }
 
 void FilteredView::stopSearch()
@@ -88,22 +99,34 @@ FilteredView::Visibility FilteredView::visibility() const
 AbstractLogData::LineType FilteredView::lineType( LineNumber lineNumber ) const
 {
     // line in filteredview corresponds to index
+    if ( !logFilteredData_ ) {
+        return AbstractLogData::LineTypeFlags::Plain;
+    }
     return logFilteredData_->lineTypeByIndex( lineNumber );
 }
 
 LineNumber FilteredView::displayLineNumber( LineNumber lineNumber ) const
 {
+    if ( !logFilteredData_ ) {
+        return 1_lnum;
+    }
     // Display a 1-based index
     return logFilteredData_->getMatchingLineNumber( lineNumber ) + 1_lcount;
 }
 
 LineNumber FilteredView::lineIndex( LineNumber lineNumber ) const
 {
+    if ( !logFilteredData_ ) {
+        return lineNumber;
+    }
     return logFilteredData_->getLineIndexNumber( lineNumber );
 }
 
 LineNumber FilteredView::maxDisplayLineNumber() const
 {
+    if ( !logFilteredData_ ) {
+        return 1_lnum;
+    }
     return LineNumber( logFilteredData_->getNbTotalLines().get() );
 }
 
@@ -113,6 +136,9 @@ void FilteredView::doRegisterShortcuts()
     AbstractLogView::doRegisterShortcuts();
     registerShortcut( ShortcutAction::LogViewNextMark, [ this ] {
         using LineTypeFlags = LogFilteredData::LineTypeFlags;
+        if ( !logFilteredData_ ) {
+            return;
+        }
         auto i = getViewPosition() - 1_lcount;
         bool foundMark = false;
         for ( ; i != 0_lnum; --i ) {
@@ -131,6 +157,9 @@ void FilteredView::doRegisterShortcuts()
         }
     } );
     registerShortcut( ShortcutAction::LogViewPrevMark, [ this ] {
+        if ( !logFilteredData_ ) {
+            return;
+        }
         const auto nbLines = logFilteredData_->getNbLine();
         for ( auto i = getViewPosition() + 1_lcount; i < nbLines; ++i ) {
             if ( lineType( i ).testFlag( LogFilteredData::LineTypeFlags::Mark ) ) {

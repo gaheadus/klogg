@@ -45,12 +45,14 @@
 
 #include <QKeyEvent>
 
+#include <memory>
+
 // Class implementing the filtered (bottom) view widget.
 class FilteredView : public AbstractLogView
 {
   Q_OBJECT
   public:
-    FilteredView( LogFilteredData* newLogData,
+    FilteredView( std::shared_ptr<LogFilteredData> newLogData,
             const QuickFindPattern* const quickFindPattern,
             QWidget* parent = nullptr );
     ~FilteredView() override;
@@ -58,6 +60,10 @@ class FilteredView : public AbstractLogView
     // Stop any ongoing quick find search. Call this before destroying the view
     // to prevent crashes from accessing the view while it's being destroyed.
     void stopSearch();
+
+    // Returns the LogFilteredData this view is bound to.
+    // Returns nullptr if the data has been reset (view destroyed).
+    std::shared_ptr<LogFilteredData> filteredData() const { return logFilteredData_; }
 
     // What is visible in the view.
     using Visibility = LogFilteredData::Visibility;
@@ -75,7 +81,10 @@ class FilteredView : public AbstractLogView
     void doRegisterShortcuts() override;
 
   private:
-    LogFilteredData* logFilteredData_;
+    // LogFilteredData is owned by FilteredView via shared_ptr. This guarantees
+    // the data lives as long as the view does; no other code can drop the
+    // last reference and destroy the data while the view is still alive.
+    std::shared_ptr<LogFilteredData> logFilteredData_;
 };
 
 #endif

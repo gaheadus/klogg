@@ -44,6 +44,8 @@
 
 #include <QtConcurrent>
 
+#include <QPointer>
+
 #include "abstractlogdata.h"
 #include "dispatch_to.h"
 #include "linetypes.h"
@@ -459,5 +461,15 @@ void QuickFind::resetLimits()
 
 void QuickFind::sendNotification( QFNotification notification )
 {
-    dispatchToMainThread( [ this, notification ]() { notify( notification ); } );
+    // Capture by QPointer so that if this QuickFind is destroyed before the
+    // queued lambda runs (e.g. the view/tab was closed while the search
+    // worker was still emitting progress notifications), the lambda becomes
+    // a no-op instead of dereferencing a dangling 'this'.
+    QPointer<QuickFind> self( this );
+    dispatchToMainThread( [ self, notification ]() {
+        if ( !self ) {
+            return;
+        }
+        self->notify( notification );
+    } );
 }

@@ -416,7 +416,7 @@ void CrawlerWidget::startNewSearch()
         }
         logFilteredData_ = logData_->getNewFilteredData();
 
-        filteredView_ = new FilteredView( logFilteredData_.get(), quickFindPattern_.get() );
+        filteredView_ = new FilteredView( logFilteredData_, quickFindPattern_.get() );
         filteredViewsData_[ filteredView_ ] = logFilteredData_;
 
         // Propagate the currently configured color labels (e.g. purple "charge_enable")
@@ -438,7 +438,7 @@ void CrawlerWidget::startNewSearch()
                  &CrawlerWidget::updateFilteredView, Qt::QueuedConnection );
 
         Q_EMIT filteredViewChanged();
-        logMainView_->useNewFiltering( logFilteredData_.get() );
+        logMainView_->useNewFiltering( logFilteredData_ );
         {
             const QSignalBlocker blocker( visibilityBox_ );
             visibilityBox_->setCurrentIndex( 0 );
@@ -1177,7 +1177,7 @@ void CrawlerWidget::setup()
         = new LogMainView( logData_.get(), quickFindPattern_.get(), &overview_, overviewWidget_ );
     logMainView_->setContentsMargins( 2, 0, 2, 0 );
 
-    filteredView_ = new FilteredView( logFilteredData_.get(), quickFindPattern_.get() );
+    filteredView_ = new FilteredView( logFilteredData_, quickFindPattern_.get() );
     filteredViewsData_[ filteredView_ ] = logFilteredData_;
     filteredView_->setContentsMargins( 2, 0, 2, 0 );
 
@@ -1185,7 +1185,7 @@ void CrawlerWidget::setup()
     overviewWidget_->setParent( logMainView_ );
 
     // Connect the search to the top view
-    logMainView_->useNewFiltering( logFilteredData_.get() );
+    logMainView_->useNewFiltering( logFilteredData_ );
 
     // Construct the visibility button
     using VisibilityFlags = LogFilteredData::VisibilityFlags;
@@ -1604,7 +1604,7 @@ void CrawlerWidget::changeFilteredView( int tabIndex )
 
     Q_EMIT filteredViewChanged();
 
-    logMainView_->useNewFiltering( logFilteredData_.get() );
+    logMainView_->useNewFiltering( logFilteredData_ );
 
     using VisibilityFlags = LogFilteredData::VisibilityFlags;
     const auto visibility = filteredView_->visibility();
@@ -1642,22 +1642,49 @@ void CrawlerWidget::closeFilteredView( int tabIndex )
         return;
     }
 
-    const bool isClosingCurrentView = ( tabFilteredView == filteredView_ );
+    // Eagerly remove the entry from filteredViewsData_ now, before the view
+    // is destroyed. This guarantees that:
+    //   1) any later iteration over filteredViewsData_ cannot accidentally
+    //      touch a destroyed FilteredView* key, and
+    //   2) the LogFilteredData shared_ptr held in the map is released here
+    //      in a deterministic order, before the FilteredView (which also
+    //      holds the same shared_ptr internally) is destroyed.
+    auto* fv = qobject_cast<FilteredView*>( tabFilteredView );
+    const bool isClosingCurrentView = ( fv != nullptr && fv == filteredView_ );
 
-    // CRITICAL: Stop any ongoing search and disconnect signals before deletion.
-    // This prevents crashes when the view is destroyed while search is still running.
-    if ( auto* filteredView = qobject_cast<FilteredView*>( tabFilteredView ) ) {
-        // Stop the quick find search
-        filteredView->stopSearch();
+    std::shared_ptr<LogFilteredData> closedFilteredData;
+    if ( fv ) {
+        auto it = filteredViewsData_.find( fv );
+        if ( it != filteredViewsData_.end() ) {
+            closedFilteredData = std::move( it->second );
+            filteredViewsData_.erase( it );
+        }
+        filteredViewsSearchContext_.erase( fv );
     }
 
-    // Disconnect all signals from this view to prevent crashes when
-    // destroyed signals try to call into this CrawlerWidget
-    disconnect( tabFilteredView, nullptr, this, nullptr );
+    // Stop any ongoing quick find search on this view and disconnect signals
+    // BEFORE the view is destroyed. This avoids races where the worker
+    // emits a notification lambda that reaches a partially-destroyed view.
+    if ( fv ) {
+        fv->stopSearch();
 
-    connect( tabFilteredView, &QObject::destroyed, this, &CrawlerWidget::filteredViewDestroyed );
+        // Drain any pending notification lambdas for this view's QuickFind.
+        // The QuickFind is still alive here (we only stopped it), and the
+        // lambdas use QPointer<QuickFind> internally so they're safe to run.
+        QCoreApplication::sendPostedEvents( qApp, 0 );
+
+        // Disconnect all signals from this view to prevent crashes when
+        // destroyed signals try to call into this CrawlerWidget
+        disconnect( fv, nullptr, this, nullptr );
+    }
+
     tabbedFilteredView_->removeTab( tabIndex );
     tabFilteredView->deleteLater();
+    // closedFilteredData goes out of scope here, dropping the last strong
+    // reference to the LogFilteredData if no other owner (such as the
+    // FilteredView itself) keeps it alive. Note: FilteredView also holds a
+    // shared_ptr to the same data; that one is released by ~FilteredView
+    // when the view is actually destroyed by the event loop.
 
     if ( isClosingCurrentView ) {
         const int remainingTabs = tabbedFilteredView_->count();
@@ -1670,7 +1697,7 @@ void CrawlerWidget::closeFilteredView( int tabIndex )
             // This ensures filteredView_ and logFilteredData_ are never nullptr,
             // preventing crashes when UI elements trigger operations after all tabs are closed.
             logFilteredData_ = logData_->getNewFilteredData();
-            filteredView_ = new FilteredView( logFilteredData_.get(), quickFindPattern_.get() );
+            filteredView_ = new FilteredView( logFilteredData_, quickFindPattern_.get() );
             filteredViewsData_[ filteredView_ ] = logFilteredData_;
 
             // Save initial context for the new empty view
@@ -1693,6 +1720,10 @@ void CrawlerWidget::filteredViewDestroyed( QObject* view )
     if ( filteredView == nullptr ) {
         return;
     }
+    // filteredViewsData_ and filteredViewsSearchContext_ entries are
+    // already cleaned up eagerly in closeFilteredView() before
+    // deleteLater(); just defensively erase here in case some other code
+    // path triggered destruction.
     filteredViewsData_.erase( filteredView );
     filteredViewsSearchContext_.erase( filteredView );
     updateDisplayedMarks();

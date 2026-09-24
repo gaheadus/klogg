@@ -43,6 +43,8 @@
 #include "abstractlogview.h"
 #include "logdata.h"
 
+#include <memory>
+
 // Class implementing the main (top) view widget.
 class LogMainView : public AbstractLogView
 {
@@ -56,8 +58,9 @@ class LogMainView : public AbstractLogView
 
     // Configure the view to use the passed filtered list
     // (used for couloured bullets)
-    // Should be NULL or the empty LFD if no filtering is used
-    void useNewFiltering( LogFilteredData* filteredData );
+    // The view holds a shared_ptr to keep the filtered data alive as long as
+    // it might be referenced. Pass an empty shared_ptr to clear.
+    void useNewFiltering( std::shared_ptr<LogFilteredData> filteredData );
 
   protected:
     // Implements the virtual function
@@ -66,7 +69,7 @@ class LogMainView : public AbstractLogView
     void doRegisterShortcuts() override;
 
   private:
-    LogFilteredData* filteredData_;
+    std::shared_ptr<LogFilteredData> filteredData_;
 };
 
 #endif

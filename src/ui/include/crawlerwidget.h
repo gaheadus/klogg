@@ -41,6 +41,7 @@
 #define CRAWLERWIDGET_H
 
 #include <cstddef>
+#include <memory>
 #include <optional>
 
 #include <QCheckBox>

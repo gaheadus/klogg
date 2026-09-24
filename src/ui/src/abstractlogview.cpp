@@ -399,9 +399,9 @@ AbstractLogView::AbstractLogView( const AbstractLogData* newLogData,
     : QAbstractScrollArea( parent )
     , followElasticHook_( HookThreshold )
     , logData_( newLogData )
-    , searchEnd_( newLogData->getNbLine().get() )
+    , searchEnd_( newLogData ? newLogData->getNbLine().get() : 0_lcount.get() )
     , quickFindPattern_( quickFindPattern )
-    , quickFind_( new QuickFind( *newLogData ) )
+    , quickFind_( newLogData ? new QuickFind( *newLogData ) : nullptr )
     , pixmapFontMetrics_( this->font() )
 {
     setViewport( nullptr );
@@ -440,15 +440,40 @@ AbstractLogView::AbstractLogView( const AbstractLogData* newLogData,
 
 AbstractLogView::~AbstractLogView()
 {
-    try {
-        if ( quickFind_ ) {
+    // Stop and delete quickFind_ safely.
+    // Note: FilteredView::~FilteredView() also calls stopQuickFindSearch()
+    // which is idempotent (waits for any in-flight search to finish).
+    // We must ensure no lambda still queued on the main thread event
+    // dispatcher (via QuickFind::sendNotification -> dispatchToMainThread)
+    // touches 'this' after we return. We rely on:
+    //   1) waitForFinished() in stopSearch() blocking until the worker
+    //      thread finishes (so no new notifications can be queued),
+    //   2) QPointer guards inside QuickFind::sendNotification making any
+    //      already-queued lambda a no-op if 'this' is gone.
+    if ( quickFind_ ) {
+        try {
             quickFind_->stopSearch();
-            delete quickFind_;
+        } catch ( const std::exception& e ) {
+            LOG_ERROR << "Failed to stop search: " << e.what();
+        } catch ( ... ) {
+            LOG_ERROR << "Failed to stop search: unknown exception";
         }
-    } catch ( const std::exception& e ) {
-        LOG_ERROR << "Failed to stop search: " << e.what();
-        delete quickFind_;
+
+        // Disconnect any signals from quickFind_ to this view before
+        // deleting it, to avoid Qt delivering a queued slot while the
+        // AbstractLogView is partially destroyed.
+        if ( quickFind_ ) {
+            QObject::disconnect( quickFind_, nullptr, this, nullptr );
+            delete quickFind_;
+            quickFind_ = nullptr;
+        }
     }
+
+    // Detach the data pointer so any late callbacks (queued slots, paint
+    // events from the event loop running on a partially-destroyed object,
+    // etc.) can detect a null data and bail out instead of dereferencing
+    // freed memory.
+    logData_ = nullptr;
 }
 
 //
