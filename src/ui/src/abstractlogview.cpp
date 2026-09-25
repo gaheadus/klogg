@@ -399,7 +399,7 @@ AbstractLogView::AbstractLogView( const AbstractLogData* newLogData,
     : QAbstractScrollArea( parent )
     , followElasticHook_( HookThreshold )
     , logData_( newLogData )
-    , searchEnd_( newLogData ? newLogData->getNbLine().get() : 0_lcount.get() )
+    , searchEnd_( newLogData ? newLogData->getNbLine().get() : LinesCount{0}.get() )
     , quickFindPattern_( quickFindPattern )
     , quickFind_( newLogData ? new QuickFind( *newLogData ) : nullptr )
     , pixmapFontMetrics_( this->font() )

@@ -477,7 +477,24 @@ void LogFilteredData::handleSearchProgressed( LinesCount nbMatches, int progress
         searchProgress_ = std::make_tuple( nbMatches, progress, initialLine );
     }
 
-    Q_EMIT searchProgressedThrottled();
+    // CRITICAL: progress == 100 (search completion) MUST bypass the throttler.
+    //
+    // Reason: LogFilteredData emits searchProgressedThrottled() for *every*
+    // progress update and the throttler waits 100ms of inactivity before
+    // emitting its triggered signal. On a continuously growing log file,
+    // every newly appended line triggers another updateSearch() which
+    // emits a fresh progress signal — this constantly resets the throttler
+    // and the progress==100 signal never reaches CrawlerWidget, so
+    // searchButton_ is never shown again after the initial search.
+    //
+    // Emit progress==100 directly so the UI always regains control once
+    // the search completes, regardless of how chatty the file is.
+    if ( progress == 100 ) {
+        Q_EMIT searchProgressed( nbMatches, 100, initialLine );
+    }
+    else {
+        Q_EMIT searchProgressedThrottled();
+    }
 
     if ( progress == 100 ) {
         detachReader();
