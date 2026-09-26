@@ -1,5 +1,11 @@
 set(QAPPLICATION_CLASS QApplication)
 
+# 使用本地已下载的依赖 - 设置缓存目录
+set(CPM_SOURCE_CACHE "D:/ziliao/code/opensource/klogg/build_root/_deps")
+
+# 允许使用本地包
+set(CPM_USE_LOCAL_PACKAGES ON)
+
 include(CPM)
 
 set(_TMP_CPM_USE_LOCAL_PACKAGES ${CPM_USE_LOCAL_PACKAGES})
