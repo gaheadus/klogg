@@ -1644,7 +1644,15 @@ void CrawlerWidget::closeFilteredView( int tabIndex )
 
     const bool isClosingCurrentView = ( tabFilteredView == filteredView_ );
 
-    connect( tabFilteredView, &QObject::destroyed, this, &CrawlerWidget::filteredViewDestroyed );
+    // CRITICAL FIX: Remove from maps BEFORE deleteLater() to prevent access to
+    // deleted view. The destroyed signal is async (via event loop), but other
+    // code may access filteredViewsData_ before the signal fires.
+    // We must synchronously clean up the maps before the object can be deleted.
+    if ( auto* filteredViewToRemove = qobject_cast<FilteredView*>( tabFilteredView ) ) {
+        filteredViewsData_.erase( filteredViewToRemove );
+        filteredViewsSearchContext_.erase( filteredViewToRemove );
+    }
+
     tabbedFilteredView_->removeTab( tabIndex );
     tabFilteredView->deleteLater();
 
@@ -1674,17 +1682,15 @@ void CrawlerWidget::closeFilteredView( int tabIndex )
             tabbedFilteredView_->setCurrentIndex( newIndex );
         }
     }
+
+    updateDisplayedMarks();
 }
 
 void CrawlerWidget::filteredViewDestroyed( QObject* view )
 {
-    auto* filteredView = qobject_cast<FilteredView*>( view );
-    if ( filteredView == nullptr ) {
-        return;
-    }
-    filteredViewsData_.erase( filteredView );
-    filteredViewsSearchContext_.erase( filteredView );
-    updateDisplayedMarks();
+    // Note: filteredViewsData_ and filteredViewsSearchContext_ are now cleaned up
+    // synchronously in closeFilteredView() before deleteLater(), so nothing to do here.
+    Q_UNUSED( view );
 }
 
 void SearchTabBar::mouseReleaseEvent( QMouseEvent* mouseEvent )
