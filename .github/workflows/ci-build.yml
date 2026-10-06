@@ -240,9 +240,17 @@ jobs:
 
       - name: Download openssl
         if: ${{ steps.cache-openssl.outputs.cache-hit != 'true' }}
+        shell: pwsh
         run: |
-          Invoke-WebRequest -Uri "https://www.firedaemon.com/download-firedaemon-openssl-1.1.1-zip" -OutFile openssl.zip
-          7z x openssl.zip
+          Invoke-WebRequest -Uri "https://slproweb.com/download/Win64OpenSSL-1_1_1w.exe" -OutFile openssl.exe
+          # Install to temp location first
+          $tempDir = "${{ github.workspace }}\openssl-temp"
+          Start-Process -FilePath "./openssl.exe" -ArgumentList "/SILENT","/SUPPRESSMSGBOXES","/DIR=$tempDir" -Wait
+          # Move to expected structure: openssl-1.1\x64\bin
+          $targetDir = "${{ github.workspace }}\openssl-1.1\${{ matrix.config.arch }}"
+          New-Item -ItemType Directory -Force -Path $targetDir | Out-Null
+          Move-Item -Path "$tempDir\*" -Destination $targetDir -Force
+          Remove-Item -Path $tempDir -Force -Recurse -ErrorAction SilentlyContinue
 
       - name: Set openssl paths
         shell: sh
