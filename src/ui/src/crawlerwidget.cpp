@@ -1616,6 +1616,13 @@ void CrawlerWidget::changeFilteredView( int tabIndex )
     }
     changeFilteredViewVisibility( visibilityIndex );
     updateDisplayedMarks();
+
+    // Ensure the view is immediately refreshed after tab switch.
+    // This fixes a 2-second delay in mouse interaction on the first line
+    // when the view's internal state (like scroll position tracking)
+    // hasn't been fully synchronized with the widget geometry yet.
+    filteredView_->update();
+    filteredView_->forceRefresh();
 }
 
 void CrawlerWidget::closeFilteredView( int tabIndex )
@@ -2294,6 +2301,11 @@ void CrawlerWidget::updateColorLabels(
         if ( fv ) {
             fv->setQuickHighlighters( labels );
         }
+    }
+
+    // Force immediate update to ensure the view responds to mouse events right away.
+    if ( filteredView_ ) {
+        filteredView_->update();
     }
 }
 

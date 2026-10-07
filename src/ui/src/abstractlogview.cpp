@@ -626,6 +626,12 @@ void AbstractLogView::mousePressEvent( QMouseEvent* mouseEvent )
 
         highlightersMenu_->clearHighlightersMenu();
         colorLablesActionGroup->deleteLater();
+
+        // Ensure the view remains responsive after the popup menu closes.
+        // This fixes a ~2 second delay before mouse events are processed.
+        // processEvents() ensures any pending repaints/events are processed immediately.
+        textAreaCache_.invalid_ = true;
+        QApplication::processEvents();
     }
 
     Q_EMIT activity();
