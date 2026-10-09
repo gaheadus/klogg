@@ -158,6 +158,15 @@ class AbstractLogView : public QAbstractScrollArea, public SearchableWidgetInter
 
     void registerShortcuts();
 
+    // Returns the current "position" of the view as a line number,
+    // it is either the selected line or the middle of the view.
+    LineNumber getViewPosition() const;
+    void setViewPosition( LineNumber position );
+
+    // Returns the selected line, if any. Used by CrawlerWidget to
+    // persist the user's selection across tab switches.
+    OptionalLineNumber getSelectedLine() const;
+
   protected:
     void mousePressEvent( QMouseEvent* mouseEvent ) override;
     void mouseMoveEvent( QMouseEvent* mouseEvent ) override;
@@ -188,10 +197,6 @@ class AbstractLogView : public QAbstractScrollArea, public SearchableWidgetInter
     }
     // Set the Overview and OverviewWidget
     void setOverview( Overview* overview, OverviewWidget* overviewWidget );
-
-    // Returns the current "position" of the view as a line number,
-    // it is either the selected line or the middle of the view.
-    LineNumber getViewPosition() const;
 
     virtual void doRegisterShortcuts();
     void registerShortcut( const std::string& action, std::function<void()> func );

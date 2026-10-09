@@ -360,6 +360,22 @@ class CrawlerWidget : public QSplitter,
         bool booleanCombination = false;
         LineNumber searchStartLine = 0_lnum;
         LineNumber searchEndLine = 0_lnum;
+        LineNumber scrollPosition = 0_lnum;
+        LineNumber logMainViewScrollPosition = 0_lnum;
+        // The main view's selected line at the time the context was saved.
+        // Used by changeFilteredViewVisibility() to position the filtered
+        // view when restoring, so the saved scroll positions take effect
+        // even after the visibility-based reselect.
+        LineNumber currentLineNumber = 0_lnum;
+        // Filtered view's selected line, used to restore both selection
+        // and scroll position on the filtered view after tab switch.
+        LineNumber filteredViewSelectedLine = 0_lnum;
+        bool hasFilteredViewSelection = false;
+        // LogMainView's selected line. Equal to currentLineNumber_ when
+        // the user clicked a line, but the scroll position (logMainViewScrollPosition)
+        // can differ from this when the user just scrolled without selecting.
+        LineNumber logMainViewSelectedLine = 0_lnum;
+        bool hasLogMainViewSelection = false;
 
         RegularExpressionPattern toPattern() const
         {

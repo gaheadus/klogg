@@ -624,6 +624,17 @@ void CrawlerWidget::updateFilteredView( LinesCount nbMatches, int progress,
         // Update both views' search limits to keep them in sync
         logMainView_->setSearchLimits( searchStartLine_, searchEndLine_ );
         filteredView_->setSearchLimits( searchStartLine_, searchEndLine_ );
+
+        // Refresh the tab's saved scroll/selection state now that the
+        // search has completed and the views have settled. Without this,
+        // the context captured at search-start time would still hold the
+        // pre-search (0,0) values, and a tab switch + switch-back
+        // would jump the views back to the top instead of where the
+        // search landed.
+        if ( filteredView_ != nullptr ) {
+            saveFilteredViewSearchContext(
+                filteredView_, searchLineEdit_->lineEdit()->text() );
+        }
     }
 }
 
@@ -1546,6 +1557,32 @@ void CrawlerWidget::changeFilteredView( int tabIndex )
         return;
     }
 
+    // Save current tab's scroll position and selection before switching away
+    if ( filteredView_ != nullptr ) {
+        auto it = filteredViewsSearchContext_.find( filteredView_ );
+        if ( it != filteredViewsSearchContext_.end() ) {
+            it->second.scrollPosition = filteredView_->getViewPosition();
+            it->second.logMainViewScrollPosition = logMainView_->getViewPosition();
+            it->second.currentLineNumber = currentLineNumber_;
+            if ( const auto selectedLine = filteredView_->getSelectedLine();
+                 selectedLine.has_value() ) {
+                it->second.filteredViewSelectedLine = *selectedLine;
+                it->second.hasFilteredViewSelection = true;
+            }
+            else {
+                it->second.hasFilteredViewSelection = false;
+            }
+            if ( const auto selectedLine = logMainView_->getSelectedLine();
+                 selectedLine.has_value() ) {
+                it->second.logMainViewSelectedLine = *selectedLine;
+                it->second.hasLogMainViewSelection = true;
+            }
+            else {
+                it->second.hasLogMainViewSelection = false;
+            }
+        }
+    }
+
     // Interrupt ALL background searches (not just the current tab's) before
     // switching to the new tab. Each tab's search worker reads file chunks
     // while holding the shared LogData file_mutex_; if any inactive tab's
@@ -1616,6 +1653,54 @@ void CrawlerWidget::changeFilteredView( int tabIndex )
     }
     changeFilteredViewVisibility( visibilityIndex );
     updateDisplayedMarks();
+
+    // Re-apply the saved scroll position AND selection after
+    // changeFilteredViewVisibility(). That helper calls
+    // filteredView_->selectAndDisplayLine() using currentLineNumber_,
+    // which scrolls the filtered view (and via the newSelection signal
+    // also scrolls logMainView_). That overrides the scroll positions
+    // we restored in restoreFilteredViewSearchContext() above. We must
+    // re-apply the user-visible scroll position so that switching tabs
+    // and back preserves the same line range in both views.
+    if ( const auto contextIt = filteredViewsSearchContext_.find( tabFilteredView );
+         contextIt != filteredViewsSearchContext_.end() ) {
+        const auto& context = contextIt->second;
+
+        // Block newSelection from the views so the restore below does not
+        // bounce back through jumpToMatchingLine()/updateLineNumberHandler()
+        // and stomp on the selection we are about to set.
+        const QSignalBlocker blockFilteredNewSelection( filteredView_ );
+        const QSignalBlocker blockLogMainNewSelection( logMainView_ );
+
+        if ( context.hasFilteredViewSelection ) {
+            // selectAndDisplayLine sets selection + scroll + emits
+            // newSelection. With the signal blocked above, only the
+            // local state is updated.
+            filteredView_->selectAndDisplayLine( context.filteredViewSelectedLine );
+        }
+        else {
+            // No selection - just place the scroll bar so the saved
+            // position (middle of the previous view) is visible.
+            filteredView_->setViewPosition( context.scrollPosition );
+        }
+
+        if ( context.hasLogMainViewSelection ) {
+            // Make sure the matching line in the main view is the
+            // one the user actually had selected (it can differ from
+            // what jumpToMatchingLine computed from the filtered view).
+            logMainView_->selectPortionAndDisplayLine( context.logMainViewSelectedLine,
+                                                       1_lcount, 0_lcol, 0_length );
+        }
+        else {
+            logMainView_->setViewPosition( context.logMainViewScrollPosition );
+        }
+
+        // Keep currentLineNumber_ in sync with the selection we just
+        // restored, so the next tab switch uses a consistent value.
+        currentLineNumber_
+            = context.hasLogMainViewSelection ? context.logMainViewSelectedLine
+                                              : context.currentLineNumber;
+    }
 
     // Ensure the view is immediately refreshed after tab switch.
     // This fixes a 2-second delay in mouse interaction on the first line
@@ -2033,6 +2118,24 @@ void CrawlerWidget::saveFilteredViewSearchContext( FilteredView* view, const QSt
     context.booleanCombination = booleanButton_->isChecked();
     context.searchStartLine = searchStartLine_;
     context.searchEndLine = searchEndLine_;
+    context.scrollPosition = view->getViewPosition();
+    context.logMainViewScrollPosition = logMainView_->getViewPosition();
+    context.currentLineNumber = currentLineNumber_;
+    if ( const auto selectedLine = view->getSelectedLine(); selectedLine.has_value() ) {
+        context.filteredViewSelectedLine = *selectedLine;
+        context.hasFilteredViewSelection = true;
+    }
+    else {
+        context.hasFilteredViewSelection = false;
+    }
+    if ( const auto selectedLine = logMainView_->getSelectedLine();
+         selectedLine.has_value() ) {
+        context.logMainViewSelectedLine = *selectedLine;
+        context.hasLogMainViewSelection = true;
+    }
+    else {
+        context.hasLogMainViewSelection = false;
+    }
     filteredViewsSearchContext_[ view ] = context;
 }
 
@@ -2071,6 +2174,18 @@ void CrawlerWidget::restoreFilteredViewSearchContext( FilteredView* view )
     const auto pattern = context.toPattern();
     logMainView_->setSearchPattern( pattern );
     filteredView_->setSearchPattern( pattern );
+
+    // Restore currentLineNumber_ so the subsequent changeFilteredViewVisibility
+    // in changeFilteredView uses the saved main view line, not the stale
+    // value from the previous tab.
+    currentLineNumber_ = context.currentLineNumber;
+
+    // Restore scroll position after all other state has been restored.
+    // This is the initial scroll; changeFilteredView() will re-apply it
+    // again after changeFilteredViewVisibility() to override the
+    // selectAndDisplayLine() that runs there.
+    filteredView_->setViewPosition( context.scrollPosition );
+    logMainView_->setViewPosition( context.logMainViewScrollPosition );
 
     updatePredefinedFiltersWidget();
 

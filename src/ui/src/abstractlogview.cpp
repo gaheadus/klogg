@@ -1215,6 +1215,18 @@ LineNumber AbstractLogView::getViewPosition() const
     return line;
 }
 
+void AbstractLogView::setViewPosition( LineNumber position )
+{
+    // Set the scroll position to show the specified line at the top
+    const auto newTopLine = position - LinesCount( getNbVisibleLines().get() / 2 );
+    verticalScrollBar()->setValue( lineNumberToVerticalScroll( newTopLine ) );
+}
+
+OptionalLineNumber AbstractLogView::getSelectedLine() const
+{
+    return selection_.selectedLine();
+}
+
 void AbstractLogView::searchUsingFunction( QuickFindSearchFn searchFunction )
 {
     disableFollow();
