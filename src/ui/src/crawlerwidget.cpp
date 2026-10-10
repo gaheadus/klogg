@@ -849,6 +849,8 @@ void CrawlerWidget::loadingFinishedHandler( LoadingStatus status )
 
     // searchButton_->setEnabled( true );
 
+    const auto totalLines = LineNumber( logData_->getNbLine().get() );
+
     // See if we need to auto-refresh the search
     if ( searchState_.isAutorefreshAllowed() ) {
         // IMPORTANT: do not overwrite searchStartLine_/searchEndLine_ here.
@@ -861,8 +863,6 @@ void CrawlerWidget::loadingFinishedHandler( LoadingStatus status )
         // Instead, only extend the actual search end-line used for the worker
         // so newly appended rows are still covered. Truncation is handled
         // separately by passing the total line count as an explicit override.
-        const auto totalLines = LineNumber( logData_->getNbLine().get() );
-
         if ( searchState_.isFileTruncated() )
             // Truncation invalidates prior line numbers — search the whole
             // file by overriding the end-line. searchStartLine_/searchEndLine_
@@ -873,15 +873,22 @@ void CrawlerWidget::loadingFinishedHandler( LoadingStatus status )
             const auto searchEndForRefresh
                 = ( totalLines > searchEndLine_ ) ? totalLines : searchEndLine_;
             logFilteredData_->updateSearch( searchStartLine_, searchEndForRefresh );
-
-            // Update view's search range to match the extended range so that
-            // newly appended lines are displayed with proper highlighting.
-            if ( totalLines > searchEndLine_ ) {
-                searchEndLine_ = totalLines;
-                logMainView_->setSearchLimits( searchStartLine_, searchEndLine_ );
-                filteredView_->setSearchLimits( searchStartLine_, searchEndLine_ );
-            }
         }
+    }
+
+    // Always extend the views' search-end line to cover newly appended rows
+    // when the file grows. Without this, logMainView draws rows beyond
+    // searchEndLine_ with the "outside search range" foreground color
+    // (Disabled Text), which makes the whole logMainView look gray and
+    // hard to read for a live ("Follow File") log that the user is not
+    // currently searching in. The user's custom range — set via
+    // "Set search start/end" — is preserved (searchLimitsSetByUser_ is
+    // checked) so the only thing that changes is the upper bound of
+    // the default [0, totalLines] range.
+    if ( !searchLimitsSetByUser_ && totalLines > searchEndLine_ ) {
+        searchEndLine_ = totalLines;
+        logMainView_->setSearchLimits( searchStartLine_, searchEndLine_ );
+        filteredView_->setSearchLimits( searchStartLine_, searchEndLine_ );
     }
 
     // Set the encoding for the views
@@ -1145,6 +1152,10 @@ void CrawlerWidget::setSearchLimits( LineNumber startLine, LineNumber endLine )
 
     searchStartLine_ = startLine;
     searchEndLine_ = endLine;
+    // The user has explicitly chosen a range — stop auto-extending
+    // searchEndLine_ on every file append. (clearSearchLimits() resets
+    // this to false below.)
+    searchLimitsSetByUser_ = true;
 
     logMainView_->setSearchLimits( startLine, endLine );
     filteredView_->setSearchLimits( startLine, endLine );
@@ -1162,7 +1173,24 @@ void CrawlerWidget::setSearchLimits( LineNumber startLine, LineNumber endLine )
 
 void CrawlerWidget::clearSearchLimits()
 {
-    setSearchLimits( 0_lnum, LineNumber( logData_->getNbLine().get() ) );
+    // The user is asking to reset to "whole file" — auto-extend may resume.
+    // Do the work directly instead of going through setSearchLimits() so
+    // that the "user has set this range" flag is cleared.
+    if ( !filteredView_ ) {
+        return;
+    }
+
+    searchStartLine_ = 0_lnum;
+    searchEndLine_ = LineNumber( logData_->getNbLine().get() );
+    searchLimitsSetByUser_ = false;
+
+    logMainView_->setSearchLimits( searchStartLine_, searchEndLine_ );
+    filteredView_->setSearchLimits( searchStartLine_, searchEndLine_ );
+
+    if ( filteredView_ != nullptr ) {
+        saveFilteredViewSearchContext(
+            filteredView_, searchLineEdit_->lineEdit()->text() );
+    }
 }
 
 //
@@ -1564,6 +1592,7 @@ void CrawlerWidget::changeFilteredView( int tabIndex )
             it->second.scrollPosition = filteredView_->getViewPosition();
             it->second.logMainViewScrollPosition = logMainView_->getViewPosition();
             it->second.currentLineNumber = currentLineNumber_;
+            it->second.searchLimitsSetByUser = searchLimitsSetByUser_;
             if ( const auto selectedLine = filteredView_->getSelectedLine();
                  selectedLine.has_value() ) {
                 it->second.filteredViewSelectedLine = *selectedLine;
@@ -2121,6 +2150,7 @@ void CrawlerWidget::saveFilteredViewSearchContext( FilteredView* view, const QSt
     context.scrollPosition = view->getViewPosition();
     context.logMainViewScrollPosition = logMainView_->getViewPosition();
     context.currentLineNumber = currentLineNumber_;
+    context.searchLimitsSetByUser = searchLimitsSetByUser_;
     if ( const auto selectedLine = view->getSelectedLine(); selectedLine.has_value() ) {
         context.filteredViewSelectedLine = *selectedLine;
         context.hasFilteredViewSelection = true;
@@ -2168,6 +2198,10 @@ void CrawlerWidget::restoreFilteredViewSearchContext( FilteredView* view )
 
     searchStartLine_ = context.searchStartLine;
     searchEndLine_ = context.searchEndLine;
+    // Restore the "user has explicitly chosen this range" flag so that
+    // the live-log auto-extend in loadingFinishedHandler() doesn't grow
+    // searchEndLine_ past the user's pinned upper bound.
+    searchLimitsSetByUser_ = context.searchLimitsSetByUser;
     logMainView_->setSearchLimits( searchStartLine_, searchEndLine_ );
     filteredView_->setSearchLimits( searchStartLine_, searchEndLine_ );
 

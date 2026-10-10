@@ -376,6 +376,11 @@ class CrawlerWidget : public QSplitter,
         // can differ from this when the user just scrolled without selecting.
         LineNumber logMainViewSelectedLine = 0_lnum;
         bool hasLogMainViewSelection = false;
+        // True when the user has explicitly set the search range for this
+        // tab via "Set search start/end". Used by the live-log auto-extend
+        // path to decide whether it is allowed to grow searchEndLine as
+        // the file grows.
+        bool searchLimitsSetByUser = false;
 
         RegularExpressionPattern toPattern() const
         {
@@ -487,6 +492,11 @@ class CrawlerWidget : public QSplitter,
 
     LineNumber searchStartLine_;
     LineNumber searchEndLine_;
+    // True when the user has explicitly set the search range via
+    // "Set search start" / "Set search end" / "Clear search limits".
+    // Used by loadingFinishedHandler() to decide whether it is allowed
+    // to auto-extend searchEndLine_ as the file grows.
+    bool searchLimitsSetByUser_ = false;
 
     // Until we have received confirmation loading is finished, we
     // should consider we are loading something.
